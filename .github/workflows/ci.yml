@@ -31,6 +31,6 @@ jobs:
           toolchain: nightly
           components: rust-src
 
-      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+        working-directory: ${{ matrix.project }}
 
-      - run: cd ${{ matrix.project }} && cargo build --release
