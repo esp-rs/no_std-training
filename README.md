@@ -9,8 +9,8 @@ We suggest you start by reading [the book](https://sergiogasquez.github.io/no_st
 ## Contents
 
 * Some introductory level examples:
-  * A basic hello-world ([Source](./hello-world))
-  * A `panic` example([Source](./panic))
-  * A blinky example([Source](./blinky))
-  * A button example([Source](./button))
-  * A button with interrupt example([Source](./button-interrupt))
+  * A basic hello-world ([Source](./intro/hello-world))
+  * A `panic` example([Source](./intro/panic))
+  * A blinky example([Source](./intro/blinky))
+  * A button example([Source](./intro/button))
+  * A button with interrupt example([Source](./intro/button-interrupt))

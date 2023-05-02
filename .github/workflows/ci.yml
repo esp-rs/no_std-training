@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         project:
-          ["blinky", "button", "button-interrupt", "hello-world", "panic"]
+          ["intro/blinky", "intro/button", "intro/button-interrupt", "intro/hello-world", "intro/panic"]
     steps:
       - uses: actions/checkout@v3
 
