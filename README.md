@@ -4,7 +4,7 @@
 
 This repository contains Training Material for learning to use Embedded Rust with `no_std` with the Espressif ESP32-C3.
 
-We suggest you start by reading [the book](https://sergiogasquez.github.io/no_std-training/).
+We suggest you start by reading [the book](https://esp-rs.github.io/no_std-training/).
 
 ## Contents
 
