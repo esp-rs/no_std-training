@@ -11,4 +11,4 @@ edition = "2021"
 
 
 [output.html]
-git-repository-url = "https://github.com/Sergio/no_std-training"
+git-repository-url = "https://github.com/esp-rs/no_std-training"
