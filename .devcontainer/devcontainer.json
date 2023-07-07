@@ -6,7 +6,7 @@
     "build": {
         "dockerfile": "Dockerfile",
         "args": {
-            "NIGHTLY_VERSION": "nightly-2023-05-09"
+            "NIGHTLY_VERSION": "nightly-2023-06-25"
         }
     },
     "customizations": {
