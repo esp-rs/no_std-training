@@ -4,7 +4,7 @@ When something goes terribly wrong in Rust there might occur a [panic].
 
 Let's see what it looks like for us.
 
-In `main.rs` put this line somewhere, e.g. after our `println`
+✅ In `main.rs` put this line somewhere, e.g. after our `println`
 ```rust,ignore
 panic!("This is a panic");
 ```
@@ -43,7 +43,7 @@ We see where the panic occured and we even see a backtrace!
 
 While in this example things are obvious, this will come handy in more complex code.
 
-Now try running the code compiled with release profile.
+✅ Now try running the code compiled with release profile.
 ```shell
 cargo run --release
 ```
