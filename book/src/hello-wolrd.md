@@ -1,3 +1,0 @@
-# Hello World
-
-After generating a project with [esp-template](https://github.com/esp-rs/esp-template) we have a working hello wolrd project. For details on how to generate a project from this template see...
