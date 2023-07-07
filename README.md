@@ -1,6 +1,6 @@
 # no_std training
 
-[![CI](https://github.com/SergioGasquez/no_std-training/actions/workflows/ci.yml/badge.svg)](https://github.com/SergioGasquez/no_std-training/actions/workflows/ci.yml)
+[![CI](https://github.com/esp-rs/no_std-training/actions/workflows/ci.yml/badge.svg)](https://github.com/esp-rs/no_std-training/actions/workflows/ci.yml)
 
 This repository contains Training Material for learning to use Embedded Rust with `no_std` with the Espressif ESP32-C3.
 
