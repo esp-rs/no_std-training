@@ -2,7 +2,7 @@
 
 Let's see how to create the iconic _Blinky_.
 
-Change the code in `main.rs` to this
+✅ Change the code in `main.rs` to this
 ```rust,ignore
 #![no_std]
 #![no_main]
@@ -20,10 +20,17 @@ fn main() -> ! {
 
     // Disable the RTC and TIMG watchdog timers
     let mut rtc = Rtc::new(peripherals.RTC_CNTL);
-    let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
+    let timer_group0 = TimerGroup::new(
+        peripherals.TIMG0,
+        &clocks,
+        &mut system.peripheral_clock_control,
+    );
     let mut wdt0 = timer_group0.wdt;
-    let timer_group1 = TimerGroup::new(peripherals.TIMG1, &clocks);
-    let mut wdt1 = timer_group1.wdt;
+    let timer_group1 = TimerGroup::new(
+        peripherals.TIMG1,
+        &clocks,
+        &mut system.peripheral_clock_control,
+    );
 
     rtc.swd.disable();
     rtc.rwdt.disable();

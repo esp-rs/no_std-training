@@ -1,7 +1,7 @@
 # Detect a button press with interrupt
 [Interrupts] offer a mechanism by which the processor handles asynchronous events and fatal errors.
 
-Let's add the [`critical-section`] crate [(see instructions on how to add a dependency)], and change `main.rs` to look like this:
+✅ Let's add the [`critical-section`] crate [(see instructions on how to add a dependency)], and change `main.rs` to look like this:
 ```rust,ignore
 #![no_std]
 #![no_main]
@@ -31,15 +31,17 @@ fn main() -> ! {
 
     // Disable the RTC and TIMG watchdog timers
     let mut rtc = Rtc::new(peripherals.RTC_CNTL);
-    let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
+    let timer_group0 = TimerGroup::new(
+        peripherals.TIMG0,
+        &clocks,
+        &mut system.peripheral_clock_control,
+    );
     let mut wdt0 = timer_group0.wdt;
-    let timer_group1 = TimerGroup::new(peripherals.TIMG1, &clocks);
-    let mut wdt1 = timer_group1.wdt;
-
-    rtc.swd.disable();
-    rtc.rwdt.disable();
-    wdt0.disable();
-    wdt1.disable();
+    let timer_group1 = TimerGroup::new(
+        peripherals.TIMG1,
+        &clocks,
+        &mut system.peripheral_clock_control,
+    );
 
     println!("Hello world!");
 
@@ -95,12 +97,12 @@ In the next line we move our button into the `static BUTTON` for the interrupt h
 
 Last thing we need to do is actually enable the interrupt.
 
-First parameter here is the kind of interrupt we want. There are several [possible interrupts].
+First, parameter here is the kind of interrupt we want. There are several [possible interrupts].
 
-Second parameter is the priority of the interrupt.
+Second, parameter is the priority of the interrupt.
 
 The interrupt handler is defined via the `#[interrupt]` macro.
-Here the name of the function must match the interrupt.
+Here, the name of the function must match the interrupt.
 
 
 [Interrupts]: https://docs.rust-embedded.org/book/start/interrupts.html
