@@ -39,9 +39,9 @@ Backtrace:
     at ../.cargo/registry/src/index.crates.io-6f17d22bba15001f/esp-riscv-rt-0.3.0/src/lib.rs:68
 ```
 
-We see where the panic occured and we even see a backtrace!
+We see where the panic occurred, and we even see a backtrace!
 
-While in this example things are obvious, this will come handy in more complex code.
+While in this example things are obvious, this will come in handy in more complex code.
 
 ✅ Now try running the code compiled with release profile.
 ```shell
@@ -72,7 +72,7 @@ Backtrace:
     at ??:??
 ```
 
-We still see where the panic occured but the backtrace is less helpful now.
+We still see where the panic occurred, but the backtrace is less helpful now.
 
 That is because the compiler omitted debug information and optimized the code.
 
@@ -80,8 +80,8 @@ But you might have noticed the difference in the size of the flashed binary.
 
 It went from 203904 bytes down to 91056 bytes!
 
-Please note that this is still huge for what we get. There are a lot of options to get the binary smaller which is beyond the scope of this book.
+Please note that this is still huge for what we get. There are a lot of options to get the binary smaller, which is beyond the scope of this book.
 
-Before going further remove the line causing the explicit panic.
+Before going further, remove the line causing the explicit panic.
 
 [panic]: https://doc.rust-lang.org/book/ch09-01-unrecoverable-errors-with-panic.html

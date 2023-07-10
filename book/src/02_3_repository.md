@@ -19,5 +19,5 @@ cd r:\
 
 ## Repository contents
 
-- `book/` - markdown sources of this book
-- `intro/` - code examples and exercises for the introduction course
+- `book/`: markdown sources of this book
+- `intro/`: code examples and exercises for the introduction course

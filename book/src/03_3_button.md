@@ -51,7 +51,7 @@ fn main() -> ! {
 }
 ```
 
-Now if the button is not pressed the LED is lit. If the button is pressed the LED is off.
+Now, if the button is not pressed, the LED is lit. If the button is pressed, the LED is off.
 
 Similarly to turning a `GPIO` into an `output` we can turn it into an `input`. Then we can get the current state of the `input` pin with `is_high` and similar functions.
 

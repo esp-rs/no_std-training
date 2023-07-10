@@ -67,7 +67,7 @@ to compile the binaries for the Espressif target. Flashing binaries from contain
     docker image build --tag rust-std-training --file .devcontainer/Dockerfile .
     ```
     Building the image takes a while depending on the OS & hardware (20-30 minutes).
-- Donwload it from [Dockerhub](https://hub.docker.com/r/espressif/rust-std-training):
+- Download it from [Dockerhub](https://hub.docker.com/r/espressif/rust-std-training):
     ```console
     docker pull espressif/rust-std-training
     ```

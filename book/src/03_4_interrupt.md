@@ -97,12 +97,12 @@ In the next line we move our button into the `static BUTTON` for the interrupt h
 
 Last thing we need to do is actually enable the interrupt.
 
-First parameter here is the kind of interrupt we want. There are several [possible interrupts].
+First, parameter here is the kind of interrupt we want. There are several [possible interrupts].
 
-Second parameter is the priority of the interrupt.
+Second, parameter is the priority of the interrupt.
 
 The interrupt handler is defined via the `#[interrupt]` macro.
-Here the name of the function must match the interrupt.
+Here, the name of the function must match the interrupt.
 
 
 [Interrupts]: https://docs.rust-embedded.org/book/start/interrupts.html

@@ -1,6 +1,6 @@
 # Preparations
 
-This chapter contains information about the course material, the required hardware and an installation guide.
+This chapter contains information about the course material, the required hardware, and an installation guide.
 
 ## Icons and Formatting we use
 

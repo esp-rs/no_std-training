@@ -2,7 +2,7 @@
 
 The `hello-world` example is basically a project generated with [esp-template]. Templates are already covered in [The Rust on ESP Book], see [Generating Projects from Templates] chapter for more details on how to generate a project from the [esp-template], and [Understanding esp-template] for detail on what is inside the template project.
 
-Since we already have the code of this example, lets use it to do a consistency check!
+Since we already have the code for this example, let's use it to do a consistency check!
 
 ✅ Connect the USB-C port of the board to your computer and enter the `hello-world` directory in the workshop repository:
 
@@ -10,7 +10,7 @@ Since we already have the code of this example, lets use it to do a consistency 
 cd intro/hello-world
 ```
 
-✅ Build, flash and monitor the project:
+✅ Build, flash, and monitor the project:
 
 ```console
 $ cargo run
