@@ -7,19 +7,23 @@ use hal::{
 };
 
 use embedded_io::blocking::*;
-use embedded_svc::ipv4::Interface;
-use embedded_svc::wifi::{AccessPointInfo, ClientConfiguration, Configuration, Wifi};
+use embedded_svc::{
+    ipv4::Interface,
+    wifi::{AccessPointInfo, ClientConfiguration, Configuration, Wifi},
+};
 
 use esp_backtrace as _;
-use esp_println::logger::init_logger;
-use esp_println::{print, println};
-use esp_wifi::wifi::utils::create_network_interface;
-use esp_wifi::wifi::{WifiError, WifiMode};
-use esp_wifi::wifi_interface::WifiStack;
-use esp_wifi::{current_millis, initialize, EspWifiInitFor};
-use smoltcp::iface::SocketStorage;
-use smoltcp::wire::IpAddress;
-use smoltcp::wire::Ipv4Address;
+use esp_println::{logger::init_logger, print, println};
+use esp_wifi::{
+    current_millis, initialize,
+    wifi::{utils::create_network_interface, WifiError, WifiMode},
+    wifi_interface::WifiStack,
+    EspWifiInitFor,
+};
+use smoltcp::{
+    iface::SocketStorage,
+    wire::{IpAddress, Ipv4Address},
+};
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
