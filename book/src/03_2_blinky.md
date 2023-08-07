@@ -2,71 +2,30 @@
 
 Let's see how to create the iconic _Blinky_.
 
-✅ Change the code in `main.rs` to this
-```rust,ignore
-#![no_std]
-#![no_main]
+intro/blinky/examples/blinky.rs contains the solution. You can run it with the following command:
 
-use esp_backtrace as _;
-use esp_println::println;
-use hal::{
-    clock::ClockControl, peripherals::Peripherals, prelude::*, timer::TimerGroup, Delay, Rtc, IO,
-};
-#[entry]
-fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
-    let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
-
-    // Disable the RTC and TIMG watchdog timers
-    let mut rtc = Rtc::new(peripherals.RTC_CNTL);
-    let timer_group0 = TimerGroup::new(
-        peripherals.TIMG0,
-        &clocks,
-        &mut system.peripheral_clock_control,
-    );
-    let mut wdt0 = timer_group0.wdt;
-    let timer_group1 = TimerGroup::new(
-        peripherals.TIMG1,
-        &clocks,
-        &mut system.peripheral_clock_control,
-    );
-
-    rtc.swd.disable();
-    rtc.rwdt.disable();
-    wdt0.disable();
-    wdt1.disable();
-
-    println!("Hello world!");
-
-    // Set GPIO7 as an output, and set its state high initially.
-    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
-    let mut led = io.pins.gpio7.into_push_pull_output();
-
-    led.set_high().unwrap();
-
-    // Initialize the Delay peripheral, and use it to toggle the LED state in a
-    // loop.
-    let mut delay = Delay::new(&clocks);
-
-    loop {
-        led.toggle().unwrap();
-        delay.delay_ms(500u32);
-    }
-}
+```shell
+cargo run --example blinky
 ```
-
-We need two new types in scope: [`IO`] and [`Delay`]
 
 On [ESP32-C3-DevKit-RUST-1] there is a regular [LED connected to GPIO 7]. If you use another board consult the data-sheet.
 
 > Note that most of the development boards from Espressif today use an addressable LED which works differently and is beyond the scope of this book. In that case, you can also connect a regular LED to some of the free pins (and don't forget to add a resistor).
 
+✅ Initiate the IO peripheral, and create a `led` variable from GPIO connected to the LED, using the
+[`into_push_pull_output` function][into-push-pull-output].
+
 Here we see that we can drive the pin `high`, `low`, or `toggle` it.
 
 We also see that the HAL offers a way to delay execution.
 
+✅ Initialize a Delay instance.
+
+✅ Using the [`toogle()`][toogle] and [`delay_ms()`][delay-ms] methods, make the LED blink every 500 ms.
+
+
 [ESP32-C3-DevKit-RUST-1]:  https://github.com/esp-rs/esp-rust-board
 [LED connected to GPIO 7]: https://github.com/esp-rs/esp-rust-board#pin-layout
-[`IO`]: https://docs.rs/esp32c3-hal/0.2.0/esp32c3_hal/gpio/struct.IO.html
-[`Delay`]: https://docs.rs/esp32c3-hal/0.2.0/esp32c3_hal/struct.Delay.html
+[into-push-pull-output]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/gpio/struct.GpioPin.html#method.into_push_pull_output
+[toogle]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/gpio/struct.GpioPin.html#method.toggle
+[delay-ms]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/struct.Delay.html#method.delay_ms
