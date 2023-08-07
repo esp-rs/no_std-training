@@ -32,7 +32,7 @@ const PASSWORD: &str = env!("PASSWORD");
 fn main() -> ! {
     let peripherals = Peripherals::take();
     let mut system = peripherals.SYSTEM.split();
-    // TODO: Explain
+    // Set clocks at maximum frequency
     let clocks = ClockControl::configure(system.clock_control, CpuClock::Clock160MHz).freeze();
 
     // Disable the RTC and TIMG watchdog timers
@@ -54,7 +54,7 @@ fn main() -> ! {
     wdt0.disable();
     wdt1.disable();
 
-    // TODO: Explain
+    // Initialize the timers used for Wifi
     let timer = SystemTimer::new(peripherals.SYSTIMER).alarm0;
     let init = initialize(
         EspWifiInitFor::Wifi,
@@ -65,6 +65,7 @@ fn main() -> ! {
     )
     .unwrap();
 
+    // Configure Wifi
     let (wifi, _) = peripherals.RADIO.split();
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
     let (iface, device, mut controller, sockets) =
@@ -92,7 +93,7 @@ fn main() -> ! {
     println!("{:?}", controller.get_capabilities());
     println!("wifi_connect {:?}", controller.connect());
 
-    // wait to get connected
+    // Wait to get connected
     println!("Wait to get connected");
     loop {
         let res = controller.is_connected();
@@ -110,7 +111,7 @@ fn main() -> ! {
     }
     println!("{:?}", controller.is_connected());
 
-    // wait for getting an ip address
+    // Wait for getting an ip address
     println!("Wait to get an ip address");
     loop {
         wifi_stack.work();
