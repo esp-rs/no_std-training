@@ -33,7 +33,7 @@ fn main() -> ! {
     let peripherals = Peripherals::take();
     let mut system = peripherals.SYSTEM.split();
     // Set clocks at maximum frequency
-    // let clocks =
+    let clocks = ClockControl::configure(system.clock_control, CpuClock::Clock160MHz).freeze();
 
     // Disable the RTC and TIMG watchdog timers
     let mut rtc = Rtc::new(peripherals.RTC_CNTL);
@@ -54,9 +54,16 @@ fn main() -> ! {
     wdt0.disable();
     wdt1.disable();
 
-    // Create a timer and initialize the Wi-Fi
-    // let timer =
-    // let init =
+    // Initialize the timers used for Wifi
+    let timer = SystemTimer::new(peripherals.SYSTIMER).alarm0;
+    let init = initialize(
+        EspWifiInitFor::Wifi,
+        timer,
+        Rng::new(peripherals.RNG),
+        system.radio_clock_control,
+        &clocks,
+    )
+    .unwrap();
 
     // Configure Wifi
     let (wifi, _) = peripherals.RADIO.split();
@@ -64,14 +71,16 @@ fn main() -> ! {
     let (iface, device, mut controller, sockets) =
         create_network_interface(&init, wifi, WifiMode::Sta, &mut socket_set_entries);
     let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
-    // Create a Client with your Wi-Fi credentials and default configuration.
-    // let client_config = Configuration::Client(.....);
+    let client_config = Configuration::Client(ClientConfiguration {
+        ssid: SSID.into(),
+        password: PASSWORD.into(),
+        ..Default::default()
+    });
     let res = controller.set_configuration(&client_config);
-    println!("wifi_set_configuration returned {:?}", res);
+    println!("Wi-Fi set_configuration returned {:?}", res);
 
-    // Start Wi-Fi controller, scan the available networks.
     controller.start().unwrap();
-    println!("is wifi started: {:?}", controller.is_started());
+    println!("Is wifi started: {:?}", controller.is_started());
 
     println!("Start Wifi Scan");
     let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
@@ -82,7 +91,7 @@ fn main() -> ! {
     }
 
     println!("{:?}", controller.get_capabilities());
-    println!("wifi_connect {:?}", controller.connect());
+    println!("Wi-Fi connect: {:?}", controller.connect());
 
     // Wait to get connected
     println!("Wait to get connected");
@@ -123,13 +132,14 @@ fn main() -> ! {
         println!("Making HTTP request");
         socket.work();
 
-        // Open the socket
-        // socket
-        //     .open(....)
-        //     .unwrap();
-        // Write and flush the socket
-        // socket...
-        // socket...
+        socket
+            .open(IpAddress::Ipv4(Ipv4Address::new(142, 250, 185, 115)), 80)
+            .unwrap();
+
+        socket
+            .write(b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n")
+            .unwrap();
+        socket.flush().unwrap();
 
         let wait_end = current_millis() + 20 * 1000;
         loop {
