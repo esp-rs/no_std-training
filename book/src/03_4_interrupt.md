@@ -1,6 +1,6 @@
 # Detect a button press with interrupt
 
-Now, instead of pooling the button pin, we will use interrupts. [Interrupts] offer a mechanism by which the processor handles asynchronous events and fatal errors.
+Now, instead of polling the button pin, we will use interrupts. [Interrupts] offer a mechanism by which the processor handles asynchronous events and fatal errors.
 
 
 ## Setup
