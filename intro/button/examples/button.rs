@@ -3,9 +3,7 @@
 
 use esp_backtrace as _;
 use esp_println::println;
-use hal::{
-    clock::ClockControl, peripherals::Peripherals, prelude::*, timer::TimerGroup, Delay, Rtc, IO,
-};
+use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rtc, IO};
 
 #[entry]
 fn main() -> ! {
@@ -35,5 +33,16 @@ fn main() -> ! {
 
     println!("Hello world!");
 
-    loop {}
+    // Set GPIO7 as an output, and set its state high initially.
+    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    let mut led = io.pins.gpio7.into_push_pull_output();
+    let button = io.pins.gpio9.into_pull_up_input();
+
+    loop {
+        if button.is_high().unwrap() {
+            led.set_high().unwrap();
+        } else {
+            led.set_low().unwrap();
+        }
+    }
 }

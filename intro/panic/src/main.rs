@@ -32,7 +32,5 @@ fn main() -> ! {
 
     println!("Hello world!");
 
-    panic!("This is a panic");
-
     loop {}
 }

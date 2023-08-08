@@ -52,9 +52,21 @@ fn main() -> ! {
 
     // Set GPIO9 as an input
     let mut button = io.pins.gpio9.into_pull_down_input();
+    button.listen(Event::FallingEdge);
+
+    critical_section::with(|cs| BUTTON.borrow_ref_mut(cs).replace(button));
+
+    interrupt::enable(peripherals::Interrupt::GPIO, interrupt::Priority::Priority3).unwrap();
+
+    unsafe {
+        riscv::interrupt::enable();
+    }
 
     let mut delay = Delay::new(&clocks);
-    loop {}
+    loop {
+        led.toggle().unwrap();
+        delay.delay_ms(500u32);
+    }
 }
 
 #[interrupt]
@@ -68,3 +80,4 @@ fn GPIO() {
             .clear_interrupt();
     });
 }
++

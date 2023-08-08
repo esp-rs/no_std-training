@@ -43,7 +43,6 @@ Hello world!
 > - Building your project and flashing it with `espflash`: `cargo build --release && espflash target/riscv32imc-unknown-none-elf/release/hello_world`
 > This modification is applied to all the projects in the training for convenience.
 
-
 [esp-template]: https://github.com/esp-rs/esp-template
 [The Rust on ESP Book]: https://esp-rs.github.io/book/
 [Generating Projects from Templates]: https://esp-rs.github.io/book/writing-your-own-application/generate-project/index.html

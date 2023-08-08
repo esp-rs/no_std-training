@@ -3,9 +3,7 @@
 
 use esp_backtrace as _;
 use esp_println::println;
-use hal::{
-    clock::ClockControl, peripherals::Peripherals, prelude::*, timer::TimerGroup, Delay, Rtc, IO,
-};
+use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rtc};
 
 #[entry]
 fn main() -> ! {
@@ -27,13 +25,14 @@ fn main() -> ! {
         &mut system.peripheral_clock_control,
     );
     let mut wdt1 = timer_group1.wdt;
-
     rtc.swd.disable();
     rtc.rwdt.disable();
     wdt0.disable();
     wdt1.disable();
 
     println!("Hello world!");
+
+    panic!("This is a panic");
 
     loop {}
 }
