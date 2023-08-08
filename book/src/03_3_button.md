@@ -3,11 +3,26 @@
 We are now going to make the LED ligth only when we press a button, we will create a
 project that reads the state of the button GPIO and reacts to its state.
 
+
+## Setup
+
+✅ Go to `intro/button` directory.
+
+✅ Open the prepared project skeleton in `intro/button`.
+
+✅ Open the docs for this project with the following command:
+
+```
+cargo doc --open
+```
+
 `intro/button/examples/button.rs` contains the solution. You can run it with the following command:
 
 ```shell
 cargo run --example button
 ```
+
+## Exercise
 
 Most of the dev-boards have a button, in our case, we will use the one labeled [`BOOT` on `GPIO9`].
 

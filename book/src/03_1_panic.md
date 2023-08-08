@@ -2,15 +2,28 @@
 
 When something goes terribly wrong in Rust there might occur a [panic].
 
-intro/panic/examples/panic.rs contains the solution. You can run it with the following command:
+
+## Setup
+
+✅ Go to `intro/panic` directory.
+
+✅ Open the prepared project skeleton in `intro/panic`.
+
+✅ Open the docs for this project with the following command:
+
+```
+cargo doc --open
+```
+
+`intro/panic/examples/panic.rs` contains the solution. You can run it with the following command:
 
 ```shell
 cargo run --example panic
 ```
 
+## Exercise
 
 ✅ In `main.rs` add a `panic!` somewhere, e.g. after our `println`
-
 
 ✅ Run the code
 

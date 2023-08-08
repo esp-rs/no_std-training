@@ -2,11 +2,26 @@
 
 Let's see how to create the iconic _Blinky_.
 
-intro/blinky/examples/blinky.rs contains the solution. You can run it with the following command:
+
+## Setup
+
+✅ Go to `intro/blinky` directory.
+
+✅ Open the prepared project skeleton in `intro/blinky`.
+
+✅ Open the docs for this project with the following command:
+
+```
+cargo doc --open
+```
+
+`intro/blinky/examples/blinky.rs` contains the solution. You can run it with the following command:
 
 ```shell
 cargo run --example blinky
 ```
+
+## Exercise
 
 On [ESP32-C3-DevKit-RUST-1] there is a regular [LED connected to GPIO 7]. If you use another board consult the data-sheet.
 

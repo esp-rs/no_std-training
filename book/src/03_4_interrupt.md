@@ -2,13 +2,28 @@
 
 Now, instead of pooling the button pin, we will use interrupts. [Interrupts] offer a mechanism by which the processor handles asynchronous events and fatal errors.
 
+
+## Setup
+
+✅ Go to `intro/button-interrupt` directory.
+
+✅ Open the prepared project skeleton in `intro/button-interrupt`.
+
+✅ Open the docs for this project with the following command:
+
+```
+cargo doc --open
+```
+
 `intro/button-interrupt/examples/button-interrupt.rs` contains the solution. You can run it with the following command:
 
 ```shell
 cargo run --example button-interrupt
 ```
 
-First thing is the `static BUTTON`. We need it since in the interrupt handler we have to clear the pending interrupt on the button and we somehow need to pass the button from main to the interrupt handler.
+## Exercise
+
+Inpecting the code, the first thing we notice is the `static BUTTON`. We need it since in the interrupt handler we have to clear the pending interrupt on the button and we somehow need to pass the button from main to the interrupt handler.
 
 Since an interrupt handler can't have arguments we need a static to get the button into the interrupt handler.
 
