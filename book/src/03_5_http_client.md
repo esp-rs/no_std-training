@@ -1,6 +1,25 @@
 # HTTP Client
 Next, we'll write a small client that retrieves data over an HTTP connection to the internet.
 
+Before jumping to the exercise, let's explore how Wi-Fi works in `no_std` Rust for Espressif devices.
+
+## Wi-Fi Ecosystem
+
+Wi-Fi support comes in the [`esp-wifi` crate][esp-wifi]. The `esp-wifi` is home to the Wi-Fi, Bluetooth and ESP-NOW driver implementations for `no_std` Rust.
+Check the repository README for current support, limitations and usage details.
+
+There are some other relevant crates, on which `esp-wifi` depends on:
+- [`embedded-svc`][embedded-svc]: Contains traits for features such as wifi, networking, HTTPD, and logging.
+  - This allows the code to be portable from `no_std` to `std` approach since both implementations use the same set of traits.
+- [`smol-tcp`][smoltcp]: Event-driven TCP/IP stack implementation.
+  - It does not require heap allocation (which is a requirement for some `no_std` projects)
+  - For more information about the crate, see the [official documentation][smoltcp-docs]
+
+[esp-wifi]: https://github.com/esp-rs/esp-wifi
+[embedded-svc]: https://github.com/esp-rs/embedded-svc
+[smoltcp]: https://github.com/smoltcp-rs/smoltcp
+[smoltcp-docs]: https://docs.rs/smoltcp/latest/smoltcp/
+
 ## Setup
 
 ✅ Go to `intro/http-client` directory.
@@ -50,7 +69,7 @@ let res = controller.set_configuration(&client_config);
 println!("Wi-Fi set_configuration returned {:?}", res);
 ```
 
-✅ Start Wi-Fi controller, scan the available networks, and we try to connect to the one we setted.
+✅ Start the Wi-Fi controller, scan the available networks, and try to connect to the one we set.
 ```rust,ignore
 controller.start().unwrap();
 println!("Is wifi started: {:?}", controller.is_started());
@@ -99,7 +118,7 @@ loop {
 }
 ```
 
-If the connection succeds, we proceed with the last part, making the HTTP request.
+If the connection succeeds, we proceed with the last part, making the HTTP request.
 
 By default, only unencrypted HTTP is available, which rather limits our options of hosts to connect to. We're going to use `www.mobile-j.de/`.
 
@@ -109,7 +128,7 @@ To make an HTTP request, we first need to open a socket, and write to it the GET
 
 ✅ `write` the following message to the socket and `flush` it: `b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n"`
 
-✅ Then we wait for the reponse and read it out.
+✅ Then we wait for the response and read it out.
 ```rust,ignore
 let wait_end = current_millis() + 20 * 1000;
 loop {
