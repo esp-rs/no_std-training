@@ -11,4 +11,4 @@
   - [Blinky](./03_2_blinky.md)
   - [Detect a button press](./03_3_button.md)
   - [Detect a button press with interrupt](./03_4_interrupt.md)
-  - [HTTP Request](./03_5_http_client.md)
+  - [HTTP Client](./03_5_http_client.md)
