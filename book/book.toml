@@ -9,6 +9,5 @@ title = "Embedded Rust (no_std) on Espressif"
 [rust]
 edition = "2021"
 
-
 [output.html]
 git-repository-url = "https://github.com/esp-rs/no_std-training"
