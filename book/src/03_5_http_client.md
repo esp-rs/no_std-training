@@ -9,8 +9,9 @@ Wi-Fi support comes in the [`esp-wifi` crate][esp-wifi]. The `esp-wifi` is home 
 Check the repository README for current support, limitations and usage details.
 
 There are some other relevant crates, on which `esp-wifi` depends on:
-- [`embedded-svc`][embedded-svc]: Contains traits for features such as wifi, networking, HTTPD, and logging.
+- [`embedded-svc`][embedded-svc]: Contains traits Wi-Fi.
   - This allows the code to be portable from `no_std` to `std` approach since both implementations use the same set of traits.
+  - It also contains traits for other features such as networking, HTTPD, and logging but those are not implemented in `esp-wifi`.
 - [`smol-tcp`][smoltcp]: Event-driven TCP/IP stack implementation.
   - It does not require heap allocation (which is a requirement for some `no_std` projects)
   - For more information about the crate, see the [official documentation][smoltcp-docs]
