@@ -15,3 +15,6 @@ We suggest you start by reading [the book](https://esp-rs.github.io/no_std-train
   * A button example([Source](./intro/button))
   * A button with interrupt example([Source](./intro/button-interrupt))
   * An HTTP client example([Source](./intro/http-clientt))
+* Advanced examples
+  * Stack overflow protection([Source](./advanced/stack_overflow_protection)
+  

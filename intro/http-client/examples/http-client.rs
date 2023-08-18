@@ -13,7 +13,7 @@ use embedded_svc::{
 };
 
 use esp_backtrace as _;
-use esp_println::{logger::init_logger, print, println};
+use esp_println::{print, println};
 use esp_wifi::{
     current_millis, initialize,
     wifi::{utils::create_network_interface, WifiError, WifiMode},
@@ -69,7 +69,7 @@ fn main() -> ! {
     let (wifi, _) = peripherals.RADIO.split();
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
     let (iface, device, mut controller, sockets) =
-        create_network_interface(&init, wifi, WifiMode::Sta, &mut socket_set_entries);
+        create_network_interface(&init, wifi, WifiMode::Sta, &mut socket_set_entries).unwrap();
     let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
     let client_config = Configuration::Client(ClientConfiguration {
         ssid: SSID.into(),

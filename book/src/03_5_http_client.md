@@ -57,7 +57,7 @@ let init = initialize(
 let (wifi, _) = peripherals.RADIO.split();
 let mut socket_set_entries: [SocketStorage; 3] = Default::default();
 let (iface, device, mut controller, sockets) =
-    create_network_interface(&init, wifi, WifiMode::Sta, &mut socket_set_entries);
+    create_network_interface(&init, wifi, WifiMode::Sta, &mut socket_set_entries).unwrap();
 let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
 ```
 
