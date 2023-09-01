@@ -37,9 +37,9 @@ cargo run --example http-client
 
 ## Exercise
 
-✅ Bump the frequency at which the target operates to its maximum. Consider using `ClockControl::configure` or `ClockControl::max`
+✅ Bump the [`clock`][clock] frequency at which the target operates to its maximum. Consider using `ClockControl::configure` or `ClockControl::max`
 
-✅ Create a timer and initialize the Wi-Fi
+✅ Create a [`timer`][timer] and initialize the Wi-Fi
 ```rust,ignore
 let timer = SystemTimer::new(peripherals.SYSTIMER).alarm0;
 let init = initialize(
@@ -158,3 +158,6 @@ while current_millis() < wait_end {
     socket.work();
 }
 ```
+
+[timer]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/systimer/index.html
+[clock]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/clock/index.html
