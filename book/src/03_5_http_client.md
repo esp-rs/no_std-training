@@ -121,7 +121,7 @@ loop {
 
 If the connection succeeds, we proceed with the last part, making the HTTP request.
 
-By default, only unencrypted HTTP is available, which rather limits our options of hosts to connect to. We're going to use `www.mobile-j.de/`.
+By default, only unencrypted HTTP is available, which limits our options of hosts to connect to. We're going to use `www.mobile-j.de/`.
 
 To make an HTTP request, we first need to open a socket, and write to it the GET request,
 
