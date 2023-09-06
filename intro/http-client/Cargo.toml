@@ -14,7 +14,7 @@ lto = "off"
 opt-level = 3
 
 [dependencies]
-hal             = { package = "esp32c3-hal", version = "0.10.0" }
+hal             = { package = "esp32c3-hal", version = "0.12.0" }
 esp-backtrace   = { version = "0.8.0", features = ["esp32c3", "panic-handler", "exception-handler", "print-uart"] }
 esp-println     = { version = "0.6.0", features = ["esp32c3", "log"] }
 esp-wifi        = { git = "https://github.com/esp-rs/esp-wifi/", features = ["esp32c3", "wifi-logs", "wifi"] }
