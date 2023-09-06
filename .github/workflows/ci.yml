@@ -12,6 +12,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  SSID: ssid
+  PASSWORD: password
 
 jobs:
   hello-world:
