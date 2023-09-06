@@ -23,7 +23,7 @@ cargo run --example button-interrupt
 
 ## Exercise
 
-Inpecting the code, the first thing we notice is the `static BUTTON`. We need it since in the interrupt handler we have to clear the pending interrupt on the button and we somehow need to pass the button from main to the interrupt handler.
+Inspecting the code, the first thing we notice is the `static BUTTON`. We need it since in the interrupt handler we have to clear the pending interrupt on the button and we somehow need to pass the button from main to the interrupt handler.
 
 Since an interrupt handler can't have arguments we need a static to get the button into the interrupt handler.
 

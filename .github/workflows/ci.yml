@@ -38,7 +38,7 @@ jobs:
       fail-fast: false
       matrix:
         project:
-          ["intro/blinky", "intro/button", "intro/button-interrupt", "intro/hello-world", "intro/panic", "intro/http-client"]
+          ["intro/blinky", "intro/button", "intro/button-interrupt", "intro/hello-world", "intro/panic", "intro/http-client", "advanced/stack_overflow_detection"]
     steps:
       - uses: actions/checkout@v3
 
