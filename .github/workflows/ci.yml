@@ -17,7 +17,7 @@ env:
 
 jobs:
   hello-world:
-    name: hello-world
+    name: intro/hello-world
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -32,22 +32,13 @@ jobs:
         working-directory: intro/hello-world
 
   examples:
-    name: ${{ matrix.project.name }}
+    name: ${{ matrix.project }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         project:
-          - name: "blinky"
-            path: "intro/blinky"
-          - name: "button"
-            path: "intro/button"
-          - name: "button-interrupt"
-            path: "intro/button-interrupt"
-          - name: "panic"
-            path: "intro/panic"
-          - name: "http-client"
-            path: "intro/http-client"
+          ["intro/blinky", "intro/button", "intro/button-interrupt", "intro/hello-world", "intro/panic", "intro/http-client"]
     steps:
       - uses: actions/checkout@v3
 
@@ -57,5 +48,5 @@ jobs:
           toolchain: nightly
           components: rust-src
 
-      - run: cargo build --release --example ${{ matrix.project.name }}
-        working-directory: ${{ matrix.project.path }}
+      - run: cargo build --release --examples
+        working-directory: ${{ matrix.project }}
