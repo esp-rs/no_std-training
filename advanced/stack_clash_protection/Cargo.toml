@@ -5,11 +5,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-hal             = { package = "esp32c3-hal", version = "0.11.0" }
-esp-backtrace   = { version = "0.7.0", features = ["esp32c3", "panic-handler", "exception-handler", "print-uart"] }
-esp-println     = { version = "0.5.0", features = ["esp32c3"] }
+hal             = { package = "esp32c3-hal", version = "0.12.0" }
+esp-backtrace   = { version = "0.8.0", features = ["esp32c3", "panic-handler", "exception-handler", "print-uart"] }
+esp-println     = { version = "0.6.0", features = ["esp32c3"] }
 critical-section = "1.1.1"
-
-[patch.crates-io]
-esp32c3-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "422eb2118676d4c1c938fa6cb2b8211fb177c232" }
-esp-hal-common = { git = "https://github.com/esp-rs/esp-hal", rev = "422eb2118676d4c1c938fa6cb2b8211fb177c232" }
