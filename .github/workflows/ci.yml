@@ -20,7 +20,7 @@ jobs:
     name: intro/hello-world
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@v1
         with:
@@ -40,7 +40,7 @@ jobs:
         project:
           ["intro/blinky", "intro/button", "intro/button-interrupt", "intro/hello-world", "intro/panic", "intro/http-client", "advanced/stack_overflow_detection"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@v1
         with:
