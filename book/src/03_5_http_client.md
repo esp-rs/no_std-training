@@ -32,8 +32,13 @@ There are some other relevant crates, on which `esp-wifi` depends on:
 `intro/http-client/examples/http-client.rs` contains the solution. You can run it with the following command:
 
 ```shell
-cargo run --example http-client
+cargo run --release --example http-client
 ```
+
+✅ Read the [Optimization Level] section of the [`esp-wifi`] README.
+
+[Optimization Level]: https://github.com/esp-rs/esp-wifi?tab=readme-ov-file#optimization-level
+[`esp-wifi`]: https://github.com/esp-rs/esp-wifi
 
 ## Exercise
 
