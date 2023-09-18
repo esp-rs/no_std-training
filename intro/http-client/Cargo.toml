@@ -12,6 +12,8 @@ resolver = "2"
 # Explicitly disable LTO which the Xtensa codegen backend has issues
 lto = "off"
 opt-level = 3
+[profile.dev]
+lto = "off"
 
 [dependencies]
 hal             = { package = "esp32c3-hal", version = "0.12.0" }
