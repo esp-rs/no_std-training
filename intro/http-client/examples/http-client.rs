@@ -33,6 +33,7 @@ fn main() -> ! {
     let clocks = ClockControl::max(system.clock_control).freeze();
 
     // Initialize the timers used for Wifi
+    // ANCHOR: wifi_init
     let timer = SystemTimer::new(peripherals.SYSTIMER).alarm0;
     let init = initialize(
         EspWifiInitFor::Wifi,
@@ -42,21 +43,29 @@ fn main() -> ! {
         &clocks,
     )
     .unwrap();
+    // ANCHOR_END: wifi_init
 
     // Configure Wifi
+    // ANCHOR: wifi_config
     let (wifi, _) = peripherals.RADIO.split();
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
     let (iface, device, mut controller, sockets) =
         create_network_interface(&init, wifi, WifiMode::Sta, &mut socket_set_entries).unwrap();
     let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
+    // ANCHOR_END: wifi_config
+    // ANCHOR: client_config_start
     let client_config = Configuration::Client(ClientConfiguration {
+        // ANCHOR_END: client_config_start
         ssid: SSID.into(),
         password: PASSWORD.into(),
-        ..Default::default()
+        ..Default::default() // ANCHOR: client_config_end
     });
+
     let res = controller.set_configuration(&client_config);
     println!("Wi-Fi set_configuration returned {:?}", res);
+    // ANCHOR_END: client_config_end
 
+    // ANCHOR: wifi_connect
     controller.start().unwrap();
     println!("Is wifi started: {:?}", controller.is_started());
 
@@ -88,7 +97,9 @@ fn main() -> ! {
         }
     }
     println!("{:?}", controller.is_connected());
+    // ANCHOR_END: wifi_connect
 
+    // ANCHOR: ip
     // Wait for getting an ip address
     println!("Wait to get an ip address");
     loop {
@@ -99,6 +110,7 @@ fn main() -> ! {
             break;
         }
     }
+    // ANCHOR_END: ip
 
     println!("Start busy loop on main");
 
@@ -119,6 +131,7 @@ fn main() -> ! {
             .unwrap();
         socket.flush().unwrap();
 
+        // ANCHOR: reponse
         let wait_end = current_millis() + 20 * 1000;
         loop {
             let mut buffer = [0u8; 512];
@@ -135,12 +148,15 @@ fn main() -> ! {
             }
         }
         println!();
+        // ANCHOR_END: reponse
 
+        // ANCHOR: socket_close
         socket.disconnect();
 
         let wait_end = current_millis() + 5 * 1000;
         while current_millis() < wait_end {
             socket.work();
         }
+        // ANCHOR_END: socket_close
     }
 }

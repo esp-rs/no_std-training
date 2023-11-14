@@ -53,6 +53,7 @@ fn deadly_recursion(data: [u8; 2048]) {
     deadly_recursion([0u8; 2048]);
 }
 
+// ANCHOR: debug_assists
 static DA: Mutex<RefCell<Option<DebugAssist>>> = Mutex::new(RefCell::new(None));
 
 fn install_stack_guard(mut da: DebugAssist<'static>, safe_area_size: u32) {
@@ -75,9 +76,14 @@ fn install_stack_guard(mut da: DebugAssist<'static>, safe_area_size: u32) {
     )
     .unwrap();
 }
+// ANCHOR_END: debug_assists
 
+// ANCHOR: interrupt
+// ANCHOR: handler
 #[interrupt]
 fn ASSIST_DEBUG() {
+    // ANCHOR_END: interrupt
+
     critical_section::with(|cs| {
         println!("\n\nPossible Stack Overflow Detected");
         let mut da = DA.borrow_ref_mut(cs);
@@ -92,3 +98,4 @@ fn ASSIST_DEBUG() {
         }
     });
 }
+// ANCHOR_END: handler

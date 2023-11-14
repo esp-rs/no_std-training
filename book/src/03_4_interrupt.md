@@ -36,7 +36,7 @@ We need the `Mutex` to make access to the button safe.
 ✅ Let's add a [`critical-section`], using the `with()` method and enable an interrupt:
 
 ```rust,ignore
-critical_section::with(|cs| BUTTON.borrow_ref_mut(cs).replace(button));
+{{#include ../../intro/button-interrupt/examples/button-interrupt.rs:critical_section}}
 ```
 In this line we move our button into the `static BUTTON` for the interrupt handler to get hold of it.
 
@@ -46,7 +46,7 @@ The code running inside the `critical_section::with` closure runs within a criti
 ✅ Enable the interrupt:
 
 ```rust,ignore
-interrupt::enable(peripherals::Interrupt::GPIO, interrupt::Priority::Priority3).unwrap();
+{{#include ../../intro/button-interrupt/examples/button-interrupt.rs:interrupt}}
 ```
 
 First parameter here is the kind of interrupt we want. There are several [possible interrupts].

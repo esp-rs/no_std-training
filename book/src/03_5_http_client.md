@@ -46,82 +46,29 @@ cargo run --release --example http-client
 
 ✅ Create a [`timer`][timer] and initialize the Wi-Fi
 ```rust,ignore
-let timer = SystemTimer::new(peripherals.SYSTIMER).alarm0;
-let init = initialize(
-    EspWifiInitFor::Wifi,
-    timer,
-    Rng::new(peripherals.RNG),
-    system.radio_clock_control,
-    &clocks,
-)
-.unwrap();
+{{#include ../../intro/http-client/examples/http-client.rs:wifi_init}}
 ```
 
 ✅ Configure Wi-Fi using Station Mode
 ```rust,ignore
-let (wifi, _) = peripherals.RADIO.split();
-let mut socket_set_entries: [SocketStorage; 3] = Default::default();
-let (iface, device, mut controller, sockets) =
-    create_network_interface(&init, wifi, WifiMode::Sta, &mut socket_set_entries);
-let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
+{{#include ../../intro/http-client/examples/http-client.rs:wifi_config}}
 ```
 
 ✅ Create a Client with your Wi-Fi credentials and default configuration. Look for a suitable constructor in the documentation.
 ```rust,ignore
-let client_config = Configuration::Client(
+{{#include ../../intro/http-client/examples/http-client.rs:client_config_start}}
     ....
-);
-let res = controller.set_configuration(&client_config);
-println!("Wi-Fi set_configuration returned {:?}", res);
+{{#include ../../intro/http-client/examples/http-client.rs:client_config_end}}
 ```
 
 ✅ Start the Wi-Fi controller, scan the available networks, and try to connect to the one we set.
 ```rust,ignore
-controller.start().unwrap();
-println!("Is wifi started: {:?}", controller.is_started());
-
-println!("Start Wifi Scan");
-let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
-if let Ok((res, _count)) = res {
-    for ap in res {
-        println!("{:?}", ap);
-    }
-}
-
-println!("{:?}", controller.get_capabilities());
-println!("Wi-Fi connect: {:?}", controller.connect());
-
-// Wait to get connected
-println!("Wait to get connected");
-loop {
-    let res = controller.is_connected();
-    match res {
-        Ok(connected) => {
-            if connected {
-                break;
-            }
-        }
-        Err(err) => {
-            println!("{:?}", err);
-            loop {}
-        }
-    }
-}
-println!("{:?}", controller.is_connected());
+{{#include ../../intro/http-client/examples/http-client.rs:wifi_connect}}
 ```
 
 ✅ Then we obtain the assigned IP
 ```rust,ignore
-// Wait for getting an ip address
-println!("Wait to get an ip address");
-loop {
-    wifi_stack.work();
-
-    if wifi_stack.is_iface_up() {
-        println!("got ip {:?}", wifi_stack.get_ip_info());
-        break;
-    }
-}
+{{#include ../../intro/http-client/examples/http-client.rs:ip}}
 ```
 
 If the connection succeeds, we proceed with the last part, making the HTTP request.
@@ -136,32 +83,12 @@ To make an HTTP request, we first need to open a socket, and write to it the GET
 
 ✅ Then we wait for the response and read it out.
 ```rust,ignore
-let wait_end = current_millis() + 20 * 1000;
-loop {
-    let mut buffer = [0u8; 512];
-    if let Ok(len) = socket.read(&mut buffer) {
-        let to_print = unsafe { core::str::from_utf8_unchecked(&buffer[..len]) };
-        print!("{}", to_print);
-    } else {
-        break;
-    }
-
-    if current_millis() > wait_end {
-        println!("Timeout");
-        break;
-    }
-}
-println!();
+{{#include ../../intro/http-client/examples/http-client.rs:reponse}}
 ```
 
 ✅ Finally, we will close the socket and wait
 ```rust,ignore
-socket.disconnect();
-
-let wait_end = current_millis() + 5 * 1000;
-while current_millis() < wait_end {
-    socket.work();
-}
+{{#include ../../intro/http-client/examples/http-client.rs:socket_close}}
 ```
 
 [timer]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/systimer/index.html
