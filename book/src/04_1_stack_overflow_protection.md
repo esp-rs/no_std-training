@@ -17,7 +17,7 @@ Some of our chips (including ESP32-C3) include the debug-assist peripheral.
 
 This peripheral can monitor the stack-pointer and detect read and/or write access to specified memory areas.
 
-We could just use the stack-pointer monitoring which will work well as long as we don't use `esp-wifi`. 
+We could just use the stack-pointer monitoring which will work well as long as we don't use `esp-wifi`.
 
 The reason we cannot use that with `esp-wifi` is that it runs multiple tasks by quickly switching between them which includes switching stacks. In that case the stack bounds check will trigger as soon as we switch the running task for the first time.
 
@@ -67,28 +67,10 @@ It should move the `DebugAssist` into a static variable.
 
 The resulting function should look like this
 ```rust,ignore
-static DA: Mutex<RefCell<Option<DebugAssist>>> = Mutex::new(RefCell::new(None));
-
-fn install_stack_guard(mut da: DebugAssist<'static>, safe_area_size: u32) {
-    extern "C" {
-        static mut _stack_end: u32;
-        static mut _stack_start: u32;
-    }
-    let stack_low = unsafe { (&mut _stack_end as *mut _ as *mut u32) as u32 };
-    let stack_high = unsafe { (&mut _stack_start as *mut _ as *mut u32) as u32 };
-    println!("Safe stack {} bytes", stack_high - stack_low - safe_area_size);
-    da.enable_region0_monitor(stack_low, stack_low + safe_area_size, true, true);
-
-    critical_section::with(|cs| DA.borrow_ref_mut(cs).replace(da));
-    interrupt::enable(
-        peripherals::Interrupt::ASSIST_DEBUG,
-        interrupt::Priority::Priority1,
-    )
-    .unwrap();
-}
+{{#include ../../advanced/stack_overflow_detection/examples/stack_overflow_protection.rs:debug_assists}}
 ```
 
-There is quite a lot going on here but most of this is setting up the interrupt. 
+There is quite a lot going on here but most of this is setting up the interrupt.
 You should recognize most of this from the interrupt exercise in the previous chapter.
 
 The most interesting part is probably `da.enable_region0_monitor(stack_low, stack_low + safe_area_size, true, true)`.
@@ -102,10 +84,8 @@ As you probably remember from the introduction to interrupts we can define the i
 The name of the function needs to match the name of the interrupt.
 
 ```rust,ignore
-#[interrupt]
-fn ASSIST_DEBUG() {
-    ...
-}
+{{#include ../../advanced/stack_overflow_detection/examples/stack_overflow_protection.rs:interrupt}}
+...
 ```
 
 Next, we need to get access to the debug assist peripheral driver which we stored in the static variable.
@@ -119,20 +99,5 @@ It is unfortunately not possible to generate a stack trace here since the stack 
 
 The whole function should look like this
 ```rust,ignore
-#[interrupt]
-fn ASSIST_DEBUG() {
-    critical_section::with(|cs| {
-        println!("\n\nPossible Stack Overflow Detected");
-        let mut da = DA.borrow_ref_mut(cs);
-        let da = da.as_mut().unwrap();
-
-        if da.is_region0_monitor_interrupt_set() {
-            let pc = da.get_region_monitor_pc();
-            println!("PC = 0x{:x}", pc);
-            da.clear_region0_monitor_interrupt();
-            da.disable_region0_monitor();
-            loop {}
-        }
-    });
-}
+{{#include ../../advanced/stack_overflow_detection/examples/stack_overflow_protection.rs:handler}}
 ```

@@ -32,9 +32,12 @@ fn main() -> ! {
     let mut button = io.pins.gpio9.into_pull_down_input();
     button.listen(Event::FallingEdge);
 
+    // ANCHOR: critical_section
     critical_section::with(|cs| BUTTON.borrow_ref_mut(cs).replace(button));
-
+    // ANCHOR_END: critical_section
+    // ANCHOR: interrupt
     interrupt::enable(peripherals::Interrupt::GPIO, interrupt::Priority::Priority3).unwrap();
+    // ANCHOR_END: interrupt
 
     unsafe {
         riscv::interrupt::enable();
