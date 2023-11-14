@@ -12,7 +12,7 @@ We use Icons to mark different kinds of information in the book:
 
 > Example note: Notes like this one contain helpful information
 
-## Code anotations
+## Code annotations
 
 In some Rust files, you can find some anchor comments:
 ```rust,ignore
