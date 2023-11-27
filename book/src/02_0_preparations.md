@@ -12,7 +12,7 @@ We use Icons to mark different kinds of information in the book:
 
 > Example note: Notes like this one contain helpful information
 
-## Code annotations
+## Code Annotations
 
 In some Rust files, you can find some anchor comments:
 ```rust,ignore
@@ -21,7 +21,7 @@ let foo = 1;
 ...
 // ANCHOR_END: test
 ```
-Anchor comments can be ingored, they are only used to introduce those parts of code in this book. See [`mdBook` documentation](https://rust-lang.github.io/mdBook/format/mdbook.html#including-portions-of-a-file)
+Anchor comments can be ignored, they are only used to introduce those parts of code in this book. See [`mdBook` documentation](https://rust-lang.github.io/mdBook/format/mdbook.html#including-portions-of-a-file)
 
 ## Required Hardware
 
