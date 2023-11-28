@@ -3,7 +3,7 @@
 
 use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, systimer::SystemTimer, Rng};
 
-use embedded_io::blocking::*;
+use embedded_io::*;
 use embedded_svc::{
     ipv4::Interface,
     wifi::{AccessPointInfo, ClientConfiguration, Configuration, Wifi},
@@ -13,7 +13,7 @@ use esp_backtrace as _;
 use esp_println::{print, println};
 use esp_wifi::{
     current_millis, initialize,
-    wifi::{utils::create_network_interface, WifiError, WifiMode},
+    wifi::{utils::create_network_interface, WifiError, WifiStaDevice},
     wifi_interface::WifiStack,
     EspWifiInitFor,
 };
@@ -47,10 +47,10 @@ fn main() -> ! {
 
     // Configure Wifi
     // ANCHOR: wifi_config
-    let (wifi, _) = peripherals.RADIO.split();
+    let wifi = peripherals.WIFI;
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
     let (iface, device, mut controller, sockets) =
-        create_network_interface(&init, wifi, WifiMode::Sta, &mut socket_set_entries).unwrap();
+        create_network_interface(&init, wifi, WifiStaDevice, &mut socket_set_entries).unwrap();
     let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
     // ANCHOR_END: wifi_config
     // ANCHOR: client_config_start
