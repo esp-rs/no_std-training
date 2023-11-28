@@ -1,18 +1,27 @@
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
+
+use critical_section::Mutex;
 use esp_backtrace as _;
 use esp_println::println;
-use hal::{assist_debug::DebugAssist, peripherals::Peripherals, prelude::*};
+use hal::{
+    assist_debug::DebugAssist,
+    clock::ClockControl,
+    interrupt,
+    peripherals::{self, Peripherals},
+    prelude::*,
+};
 
 #[entry]
 fn main() -> ! {
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
-    let mut peripheral_clock_control = system.peripheral_clock_control;
+    let _ = ClockControl::boot_defaults(system.clock_control).freeze();
 
     // get the debug assist driver
-    let da = DebugAssist::new(peripherals.ASSIST_DEBUG, &mut peripheral_clock_control);
+    let da = DebugAssist::new(peripherals.ASSIST_DEBUG);
 
     boom();
 

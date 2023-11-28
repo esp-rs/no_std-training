@@ -8,6 +8,7 @@ use esp_backtrace as _;
 use esp_println::println;
 use hal::{
     assist_debug::DebugAssist,
+    clock::ClockControl,
     interrupt,
     peripherals::{self, Peripherals},
     prelude::*,
@@ -17,10 +18,10 @@ use hal::{
 fn main() -> ! {
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
-    let mut peripheral_clock_control = system.peripheral_clock_control;
+    let _ = ClockControl::boot_defaults(system.clock_control).freeze();
 
     // get the debug assist driver
-    let da = DebugAssist::new(peripherals.ASSIST_DEBUG, &mut peripheral_clock_control);
+    let da = DebugAssist::new(peripherals.ASSIST_DEBUG);
 
     // set up stack overflow protection
     install_stack_guard(da, 4096);
