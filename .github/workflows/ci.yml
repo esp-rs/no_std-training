@@ -6,11 +6,13 @@ on:
       - "book/"
       - "book/**"
       - "**/README.md"
+      - ".github/workflows/wokwi_projects.yml"
   pull_request:
     paths-ignore:
       - "book/"
       - "book/**"
       - "**/README.md"
+      - ".github/workflows/wokwi_projects.yml"
   schedule:
     - cron: "50 7 * * *"
 
@@ -76,6 +78,7 @@ jobs:
         working-directory: ${{ matrix.project.path }}
 
       - name: Wokwi CI check
+        if: matrix.project.name != 'button-interrupt' && matrix.project.name != 'stack-overflow-detection'
         uses: wokwi/wokwi-ci-action@v1
         with:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}
