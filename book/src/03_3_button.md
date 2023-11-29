@@ -38,3 +38,15 @@ Similarly to turning a `GPIO` into an `output` we can turn it into an `input`. T
 [`BOOT` on `GPIO9`]: https://github.com/esp-rs/esp-rust-board#ios
 [into-pull-up-input]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/gpio/struct.GpioPin.html#method.into_pull_up_input
 [into-push-pull-output]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/gpio/struct.GpioPin.html#method.into_push_pull_output
+
+## Simulation
+
+This project is available for simulation through two methods:
+- Wokwi projects:
+  - Exercise: Currently not available
+  - [Solution](https://wokwi.com/projects/382725583123606529?build-cache=disable)
+- Wokwi files are also present in the project folder to simulate it with Wokwi VS Code extension:
+   1. Press F1, select `Wokwi: Select Config File` and choose `intro/button/wokwi.toml`
+      - Edit the `wokwi.toml` file to select between exercise and solution simulation
+   2. Build you project
+   3. Press F1 again and select `Wokwi: Start Simulator`

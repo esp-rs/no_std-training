@@ -47,3 +47,12 @@ Hello world!
 [The Rust on ESP Book]: https://esp-rs.github.io/book/
 [Generating Projects from Templates]: https://esp-rs.github.io/book/writing-your-own-application/generate-project/index.html
 [Understanding esp-template]: https://esp-rs.github.io/book/writing-your-own-application/generate-project/esp-template.html
+
+## Simulation
+
+This project is available for simulation through two methods:
+- [Wokwi project](https://wokwi.com/projects/382725628217620481?build-cache=disable)
+- Wokwi VS Code extension:
+  1. Press F1, select `Wokwi: Select Config File`, and choose `intro/hello-world/wokwi.toml`.
+  2. Build your project.
+  3. Press F1 again and select `Wokwi: Start Simulator`.
