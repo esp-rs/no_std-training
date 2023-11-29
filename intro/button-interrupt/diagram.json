@@ -9,7 +9,7 @@
             "top": -99.32,
             "left": 34.67,
             "attrs": {
-                "builder": "rust-training-esp32c3"
+                "builder": "rust-nostd-esp"
             }
         },
         {
