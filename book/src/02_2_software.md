@@ -8,12 +8,12 @@ Follow the steps below for a default installation of the ESP32-C3 platform tooli
 
 ✅ If you haven't got Rust on your computer, obtain it via <https://rustup.rs/>
 
-Furthermore, for ESP32-C3, a [*nightly* version](https://rust-lang.github.io/rustup/concepts/channels.html#working-with-nightly-rust) of the Rust toolchain is currently required, for this training we will use `nightly-2023-06-25` version.
+Furthermore, for ESP32-C3, a [*nightly* version](https://rust-lang.github.io/rustup/concepts/channels.html#working-with-nightly-rust) of the Rust toolchain is currently required, for this training we will use `nightly-2023-11-14` version.
 
 ✅ Install *nightly* Rust and add support for the target architecture using the following command:
 
 ```console
-rustup toolchain install nightly-2023-06-25 --component rust-src --target riscv32imc-unknown-none-elf
+rustup toolchain install nightly-2023-11-14 --component rust-src --target riscv32imc-unknown-none-elf
 ```
 
 🔎 Rust is capable of cross-compiling to any supported target (see `rustup target list`). By default, only the native architecture of your system is installed.
@@ -56,7 +56,7 @@ to compile the binaries for the Espressif target. Flashing binaries from contain
     - On the host: use the `cargo-espflash` sub-command to flash the program onto the embedded hardware
 - Use [`web-flash`](https://github.com/esp-rs/esp-web-flash-server) crate to flash the resulting binaries from the container. The container already includes `web-flash`. Here is how you would flash the build output of [`hello-world` project](./02_4_hello-world.md):
    ```console
-   web-flash --chip esp32c3 target/riscv32imc-unknown-none-elf/debug/hello-world
+   web-flash --chip esp32c3 target/riscv32imc-unknown-none-elf/release/hello-world
    ```
 
 ✅ Install [`Docker`](https://docs.docker.com/get-docker/) for your operating system.
