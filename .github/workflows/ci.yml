@@ -78,7 +78,7 @@ jobs:
         working-directory: ${{ matrix.project.path }}
 
       - name: Wokwi CI check
-        if: matrix.project.name != 'button-interrupt' && matrix.project.name != 'stack-overflow-detection'
+        if: matrix.project.name != 'stack-overflow-detection'
         uses: wokwi/wokwi-ci-action@v1
         with:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}

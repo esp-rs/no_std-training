@@ -29,9 +29,9 @@ jobs:
           - name: button
             id: "382725583123606529"
             path: "intro/button"
-          # - name: button-interrupt
-          #   id: "382723722184136705"
-          #   path: "intro/button-interrupt"
+          - name: button-interrupt
+            id: "382723722184136705"
+            path: "intro/button-interrupt"
           - name: panic
             id: "382726300037178369"
             path: "intro/panic"

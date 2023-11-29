@@ -7,14 +7,14 @@ use esp_backtrace as _;
 use esp_println::println;
 use hal::{
     clock::ClockControl,
-    gpio::{Event, Gpio9, Input, PullDown, IO},
+    gpio::{Event, Gpio9, Input, PullUp, IO},
     interrupt,
     peripherals::{self, Peripherals},
     prelude::*,
     riscv, Delay,
 };
 
-static BUTTON: Mutex<RefCell<Option<Gpio9<Input<PullDown>>>>> = Mutex::new(RefCell::new(None));
+static BUTTON: Mutex<RefCell<Option<Gpio9<Input<PullUp>>>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
 fn main() -> ! {
@@ -29,7 +29,7 @@ fn main() -> ! {
     let mut led = io.pins.gpio7.into_push_pull_output();
 
     // Set GPIO9 as an input
-    let mut button = io.pins.gpio9.into_pull_down_input();
+    let mut button = io.pins.gpio9.into_pull_up_input();
     button.listen(Event::FallingEdge);
 
     // ANCHOR: critical_section
