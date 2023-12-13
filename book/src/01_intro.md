@@ -10,6 +10,11 @@ The introductory trail will introduce you to the basics of embedded development 
 
 > Note that there are several examples covering the use of specific peripherals under the examples folder of every SoC `esp-hal`. E.g. [`esp32c3-hal/examples`]
 
+If you would like to learn about `std` development, see [Using the Standard Library (std)] chapter of [The Rust on ESP Book] and,
+[Embedded Rust on Espressif] training.
+
+You can join the [esp-rs community](https://matrix.to/#/#esp-rs:matrix.org) on Matrix for all technical questions and issues! The community is open to everyone.
+
 ## The board
 
 Examples shown here usually apply to ESP32-C3 using the [ESP32-C3-DevKit-RUST-1] board.
@@ -27,3 +32,5 @@ You can use any [SoC supported by `no_std`] but smaller code and configuration c
 [ESP32-C3-DevKit-RUST-1]: https://github.com/esp-rs/esp-rust-board
 [`esp32c3-hal/examples`]: https://github.com/esp-rs/esp-hal/tree/main/esp32c3-hal/examples
 [SoC supported by `no_std`]: https://esp-rs.github.io/book/overview/bare-metal.html#current-support
+[Using the Standard Library (std)]: https://esp-rs.github.io/book/overview/using-the-standard-library.html
+[Embedded Rust on Espressif]: https://esp-rs.github.io/std-training/
