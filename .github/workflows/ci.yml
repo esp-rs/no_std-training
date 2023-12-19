@@ -38,6 +38,7 @@ jobs:
         working-directory: intro/hello-world
 
       - name: Wokwi CI check
+        if: github.actor == 'esp-rs'
         uses: wokwi/wokwi-ci-action@v1
         with:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}
@@ -78,7 +79,7 @@ jobs:
         working-directory: ${{ matrix.project.path }}
 
       - name: Wokwi CI check
-        if: matrix.project.name != 'stack-overflow-detection'
+        if: matrix.project.name != 'stack-overflow-detection' && github.actor == 'esp-rs'
         uses: wokwi/wokwi-ci-action@v1
         with:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}
