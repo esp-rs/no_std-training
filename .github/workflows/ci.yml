@@ -3,21 +3,27 @@ name: CI
 on:
   push:
     paths-ignore:
+      - "book/"
+      - "book/**"
       - "**/README.md"
+      - ".github/workflows/wokwi_projects.yml"
   pull_request:
     paths-ignore:
+      - "book/"
+      - "book/**"
       - "**/README.md"
+      - ".github/workflows/wokwi_projects.yml"
   schedule:
     - cron: "50 7 * * *"
 
 env:
   CARGO_TERM_COLOR: always
-  SSID: ssid
-  PASSWORD: password
+  SSID: Wokwi-GUEST
+  PASSWORD: ""
 
 jobs:
   hello-world:
-    name: intro/hello-world
+    name: hello-world
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,14 +37,35 @@ jobs:
       - run: cargo build --release
         working-directory: intro/hello-world
 
+      - name: Wokwi CI check
+        if: github.actor == 'esp-rs'
+        uses: wokwi/wokwi-ci-action@v1
+        with:
+          token: ${{ secrets.WOKWI_CLI_TOKEN }}
+          path: intro/hello-world
+          timeout: 30000
+          scenario: ${{ github.workspace }}/.github/hello-world.test.yaml
+          fail_text: 'Error'
+
   examples:
-    name: ${{ matrix.project }}
+    name: ${{ matrix.project.name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         project:
-          ["intro/blinky", "intro/button", "intro/button-interrupt", "intro/hello-world", "intro/panic", "intro/http-client", "advanced/stack_overflow_detection"]
+          - name: "blinky"
+            path: "intro/blinky"
+          - name: "button"
+            path: "intro/button"
+          - name: "button-interrupt"
+            path: "intro/button-interrupt"
+          - name: "panic"
+            path: "intro/panic"
+          - name: "http-client"
+            path: "intro/http-client"
+          - name: "stack-overflow-detection"
+            path: "advanced/stack-overflow-detection"
     steps:
       - uses: actions/checkout@v4
 
@@ -49,4 +76,14 @@ jobs:
           components: rust-src
 
       - run: cargo build --release --examples
-        working-directory: ${{ matrix.project }}
+        working-directory: ${{ matrix.project.path }}
+
+      - name: Wokwi CI check
+        if: matrix.project.name != 'stack-overflow-detection' && github.actor == 'esp-rs'
+        uses: wokwi/wokwi-ci-action@v1
+        with:
+          token: ${{ secrets.WOKWI_CLI_TOKEN }}
+          path: ${{ matrix.project.path }}
+          timeout: 30000
+          scenario: ${{ github.workspace }}/.github/${{ matrix.project.name }}.test.yaml
+          fail_text: 'Error'

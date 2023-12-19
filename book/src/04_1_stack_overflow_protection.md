@@ -1,4 +1,4 @@
-# Stack Overflow Protection
+# Stack Overflow Detection
 
 Rust is well known for its memory safety. Whenever possible the compiler enforces memory safety at compile.
 
@@ -31,9 +31,9 @@ We can also test for the current stack usage by temporarily increasing the safe 
 
 ## Setup
 
-✅ Go to `advanced/stack_overflow_protection` directory.
+✅ Go to `advanced/stack-overflow-detection` directory.
 
-✅ Open the prepared project skeleton in `advanced/stack_overflow_protection`.
+✅ Open the prepared project skeleton in `advanced/stack-overflow-detection`.
 
 ✅ Open the docs for this project with the following command:
 
@@ -52,10 +52,10 @@ If you change it to run from flash you won't see a crash but the application wil
 
 In this case it's easy to guess the cause of this behavior however in a real world application you probably won't know what exactly happened.
 
-`advanced/stack_overflow_protection/examples/stack_overflow_protection.rs` contains the solution. You can run it with the following command:
+`advanced/stack-overflow-detection/examples/stack-overflow-detection.rs` contains the solution. You can run it with the following command:
 
 ```shell
-cargo run --example stack_overflow_protection
+cargo run --example stack-overflow-detection
 ```
 
 ## Exercise
@@ -67,7 +67,7 @@ It should move the `DebugAssist` into a static variable.
 
 The resulting function should look like this
 ```rust,ignore
-{{#include ../../advanced/stack_overflow_detection/examples/stack_overflow_protection.rs:debug_assists}}
+{{#include ../../advanced/stack-overflow-detection/examples/stack-overflow-detection.rs:debug_assists}}
 ```
 
 There is quite a lot going on here but most of this is setting up the interrupt.
@@ -84,7 +84,7 @@ As you probably remember from the introduction to interrupts we can define the i
 The name of the function needs to match the name of the interrupt.
 
 ```rust,ignore
-{{#include ../../advanced/stack_overflow_detection/examples/stack_overflow_protection.rs:interrupt}}
+{{#include ../../advanced/stack-overflow-detection/examples/stack-overflow-detection.rs:interrupt}}
 ...
 ```
 
@@ -99,5 +99,5 @@ It is unfortunately not possible to generate a stack trace here since the stack 
 
 The whole function should look like this
 ```rust,ignore
-{{#include ../../advanced/stack_overflow_detection/examples/stack_overflow_protection.rs:handler}}
+{{#include ../../advanced/stack-overflow-detection/examples/stack-overflow-detection.rs:handler}}
 ```

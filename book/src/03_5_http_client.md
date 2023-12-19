@@ -93,3 +93,15 @@ To make an HTTP request, we first need to open a socket, and write to it the GET
 
 [timer]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/systimer/index.html
 [clock]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/clock/index.html
+
+## Simulation
+
+This project is available for simulation through two methods:
+- Wokwi projects:
+  - Exercise: Currently not available
+  - Solution: Currently not available
+- Wokwi files are also present in the project folder to simulate it with Wokwi VS Code extension:
+   1. Press F1, select `Wokwi: Select Config File` and choose `intro/http-client/wokwi.toml`
+      - Edit the `wokwi.toml` file to select between exercise and solution simulation
+   2. Build you project
+   3. Press F1 again and select `Wokwi: Start Simulator`

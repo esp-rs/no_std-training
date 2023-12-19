@@ -1,5 +1,5 @@
 [package]
-name = "button_interrupt"
+name = "button-interrupt"
 version = "0.1.0"
 authors = ["Sergio Gasquez <sergio.gasquez@gmail.com>"]
 edition = "2021"

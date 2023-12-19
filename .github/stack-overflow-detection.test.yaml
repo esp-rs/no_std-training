@@ -1,0 +1,7 @@
+name: stack-overflow-detection test
+version: 1
+author: Sergio Gasquez Arcos
+
+steps:
+    - wait-serial: "Safe stack"
+    - wait-serial: "Possible Stack Overflow Detected"

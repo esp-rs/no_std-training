@@ -6,7 +6,7 @@ use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, systimer::S
 use embedded_io::*;
 use embedded_svc::{
     ipv4::Interface,
-    wifi::{AccessPointInfo, ClientConfiguration, Configuration, Wifi},
+    wifi::{AccessPointInfo, AuthMethod, ClientConfiguration, Configuration, Wifi},
 };
 
 use esp_backtrace as _;
@@ -53,11 +53,21 @@ fn main() -> ! {
         create_network_interface(&init, wifi, WifiStaDevice, &mut socket_set_entries).unwrap();
     let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
     // ANCHOR_END: wifi_config
+
+    let mut auth_method = AuthMethod::WPA2Personal;
+    let mut channel = None;
+    if PASSWORD.is_empty() {
+        auth_method = AuthMethod::None;
+        channel = Some(6);
+    }
+
     // ANCHOR: client_config_start
     let client_config = Configuration::Client(ClientConfiguration {
         // ANCHOR_END: client_config_start
         ssid: SSID.into(),
         password: PASSWORD.into(),
+        auth_method,
+        channel,
         ..Default::default() // ANCHOR: client_config_end
     });
 

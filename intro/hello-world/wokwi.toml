@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = "target/riscv32imc-unknown-none-elf/release/hello_world"
+elf = "target/riscv32imc-unknown-none-elf/release/hello_world"
