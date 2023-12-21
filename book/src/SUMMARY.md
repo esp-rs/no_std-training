@@ -12,5 +12,6 @@
   - [Detect a button press](./03_3_button.md)
   - [Detect a button press with interrupt](./03_4_interrupt.md)
   - [HTTP Client](./03_5_http_client.md)
+  - [Using `defmt`](./03_6_defmt.md)
 - [Advanced level examples](./04_0_intro_advanced_examples.md)
   - [Stack overflow protection with Debug Assist](./04_1_stack_overflow_protection.md)
