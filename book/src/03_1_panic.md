@@ -34,6 +34,7 @@ cargo run
 We see where the panic occurred, and we even see a backtrace!
 
 While in this example things are obvious, this will come in handy in more complex code.
+
 ✅ Now try running the code compiled with release profile.
 
 ```shell
