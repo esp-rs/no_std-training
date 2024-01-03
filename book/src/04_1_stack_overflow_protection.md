@@ -13,6 +13,9 @@ In bare-metal however there is no common way to implement stack protection.
 On some platforms it's done by moving the stack to the start of the RAM so that when the stack grows above its bounding an access fault will occur.
 We cannot do that because on our chips there is the flash/ext-mem cache at the start of RAM which we definitely shouldn't touch.
 
+> 🔎 On ESP32-C6/ESP32-H2 cache is not located in the start of RAM which means we can move the stack there.
+> esp-hal offers the feature `flip-link` which will do that and you get stack-overflow protection "for free".
+
 Some of our chips (including ESP32-C3) include the debug-assist peripheral.
 
 This peripheral can monitor the stack-pointer and detect read and/or write access to specified memory areas.
