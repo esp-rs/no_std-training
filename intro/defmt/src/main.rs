@@ -1,10 +1,8 @@
 #![no_std]
 #![no_main]
 
-use esp_backtrace as _;
-// ANCHOR: println_include
-use esp_println as _;
-// ANCHOR_END: println_include
+//  Build the `esp_println` and `esp_backtrace` libs
+
 use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay};
 
 #[entry]
@@ -14,11 +12,10 @@ fn main() -> ! {
     let clocks = ClockControl::max(system.clock_control).freeze();
     let mut delay = Delay::new(&clocks);
 
-    defmt::trace!("trace");
-    defmt::debug!("debug");
-    defmt::info!("info");
-    defmt::warn!("warn");
-    defmt::error!("error");
+    // Print a log or a message using defmt
+
+    // Use a panic! macro to trigger a panic
+
     loop {
         defmt::println!("Loop...");
         delay.delay_ms(500u32);

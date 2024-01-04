@@ -6,18 +6,20 @@ In this chapter, we will cover [`defmt`][defmt], a highly efficient logging fram
 
 ## `defmt` Ecosystem
 
-[`esp-println`][esp-println] and [`espflash`/`cargo-espflash`][espflash] provide a mechanism to use `defmt`:
-- `esp-println` has the `defmt-espflash` feature, which adds framming bytes so `espflash` knows that is a `defmt` message.
+[`esp-println`][esp-println], [`esp-backtrace`][esp-backtrace] and [`espflash`/`cargo-espflash`][espflash] provide mechanisms to use `defmt`:
+- `espflash` has support for different [logging formats][espflash-logformat], one of them being `defmt`.
   - `espflash` requires framming bytes as when using `defmt` it also needs to print non-`defmt` messages, like the bootloader prints.
     - It's important to note that other `defmt`-enabled tools like `probe-rs` won't be able to parse these messages due to the extra framing bytes.
   - Uses [rzcobs encoding](https://github.com/Dirbaio/rzcobs)
-- `espflash` has support for different [logging formats][espflash-logformat], one of them being `defmt`
+- Both `esp-println` and `esp-backtrace` have a `defmt-espflash` feature, which adds framming bytes so `espflash` knows that is a `defmt` message.
 
 
 [esp-println]: https://github.com/esp-rs/esp-println
+[esp-backtrace]: https://github.com/esp-rs/esp-backtrace
 [espflash]: https://github.com/esp-rs/espflash
 [espflash-logformat]: https://github.com/esp-rs/espflash/blob/main/espflash/README.md#logging-format
-## Setup
+
+# Setup
 
 ✅ Go to `intro/defmt` directory.
 
@@ -31,18 +33,20 @@ cargo run --release --example defmt
 
 ## Exercise
 
-✅ Enable the `defmt-espflash` feature of `esp-println`.
+✅ Make sure the `defmt-espflash` feature of `esp-println` and `esp-backtrace` are enabled.
 
-✅ Update the [linking process](https://defmt.ferrous-systems.com/setup#linker-script)
+✅ Update the [linking process](https://defmt.ferrous-systems.com/setup#linker-script) in the `.cargo/config.toml`.
 
-✅ Add the [`defmt` crate](https://crates.io/crates/defmt) to the dependencies.
+✅ Make sure, the [`defmt` crate](https://crates.io/crates/defmt) is added to the dependencies.
 
-✅ Make sure you are building esp_println
+✅ Make sure you are building `esp_println` and `esp_backtrace`
 ```rust,ignore
 {{#include ../../intro/defmt/examples/defmt.rs:println_include}}
 ```
 
-✅ Use the `println` or any of the logging [`defmt` macros](https://docs.rs/defmt/latest/defmt/#macros) to print a message.
+✅ Use the `defmt::println!` or any of the logging [`defmt` macros](https://docs.rs/defmt/latest/defmt/#macros) to print a message.
 - If you want to use any of the logging macros like `info`, `debug`
   - Enable the `log` feature of `esp-println`
   - When building the app, [set `DEFMT_LOG`](https://defmt.ferrous-systems.com/filtering.html?highlight=DEFMT_LOG#defmt_log) level.
+
+✅ Add a `panic!` macro to trigger a panic with a `defmt` message.

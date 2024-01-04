@@ -94,7 +94,7 @@ version = "0.1.0"
 dependencies = [
  "defmt 0.3.5",
  "esp-backtrace",
- "esp-println 0.8.0",
+ "esp-println",
  "esp32c3-hal",
 ]
 
@@ -231,11 +231,12 @@ checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
 name = "esp-backtrace"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50f1f532fb2f820e2eeb7e5c7d479cdb8bdd939fe5d5a33c511e94371b0667ae"
+checksum = "c0b0597e7f5d09d1431fb5a788f6fd794a4e1d7de2179e165c868ddb2804c78c"
 dependencies = [
- "esp-println 0.7.1",
+ "defmt 0.3.5",
+ "esp-println",
 ]
 
 [[package]]
@@ -280,12 +281,6 @@ dependencies = [
  "quote",
  "syn 2.0.42",
 ]
-
-[[package]]
-name = "esp-println"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "678ad508e8e61561eccee27003a5033901fe07fe8700508c324849b3df930ef5"
 
 [[package]]
 name = "esp-println"

@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use esp_backtrace as _;
 // ANCHOR: println_include
+use esp_backtrace as _;
 use esp_println as _;
 // ANCHOR_END: println_include
 use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay};
@@ -19,6 +19,9 @@ fn main() -> ! {
     defmt::info!("info");
     defmt::warn!("warn");
     defmt::error!("error");
+
+    // panic!("Very useful panic message");
+
     loop {
         defmt::println!("Loop...");
         delay.delay_ms(500u32);
