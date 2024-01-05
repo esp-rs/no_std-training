@@ -64,6 +64,8 @@ jobs:
             path: "intro/panic"
           - name: "http-client"
             path: "intro/http-client"
+          - name: "defmt"
+            path: "intro/defmt"
           - name: "stack-overflow-detection"
             path: "advanced/stack-overflow-detection"
     steps:
@@ -79,7 +81,7 @@ jobs:
         working-directory: ${{ matrix.project.path }}
 
       - name: Wokwi CI check
-        if: matrix.project.name != 'stack-overflow-detection' && github.actor == 'esp-rs'
+        if: (matrix.project.name != 'stack-overflow-detection' || matrix.project.name != 'defmt') && github.actor == 'esp-rs'
         uses: wokwi/wokwi-ci-action@v1
         with:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}
