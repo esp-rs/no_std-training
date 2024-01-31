@@ -11,7 +11,8 @@ In this chapter, we will cover [`defmt`][defmt], a highly efficient logging fram
   - `espflash` requires framming bytes as when using `defmt` it also needs to print non-`defmt` messages, like the bootloader prints.
     - It's important to note that other `defmt`-enabled tools like `probe-rs` won't be able to parse these messages due to the extra framing bytes.
   - Uses [rzcobs encoding](https://github.com/Dirbaio/rzcobs)
-- Both `esp-println` and `esp-backtrace` have a `defmt-espflash` feature, which adds framming bytes so `espflash` knows that is a `defmt` message.
+- `esp-println` has a `defmt-espflash` feature, which adds framming bytes so `espflash` knows that is a `defmt` message.
+- `esp-backtrace` has a `defmt` feature that uses `defmt` logging to print panic and exception handler messages.
 
 
 [esp-println]: https://github.com/esp-rs/esp-println
@@ -33,7 +34,9 @@ cargo run --release --example defmt
 
 ## Exercise
 
-✅ Make sure the `defmt-espflash` feature of `esp-println` and `esp-backtrace` are enabled.
+✅ Make sure the `defmt-espflash` feature of `esp-println`  is enabled.
+
+✅ Make sure the `defmt` feature of `esp-backtrace` is enabled.
 
 ✅ Update the [linking process](https://defmt.ferrous-systems.com/setup#linker-script) in the `.cargo/config.toml`.
 
