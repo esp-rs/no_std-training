@@ -88,7 +88,7 @@ version = "0.1.0"
 dependencies = [
  "defmt 0.3.5",
  "esp-backtrace",
- "esp-println",
+ "esp-println 0.8.0",
  "esp32c3-hal",
 ]
 
@@ -227,11 +227,12 @@ checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
 name = "esp-backtrace"
-version = "0.10.0"
-source = "git+https://github.com/esp-rs/esp-backtrace?rev=445b700#445b700e41b34896d3ee800fae7a6b5677115aeb"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c5c6f9166728f6cd08e5781899f4c94fd7ccf2efd04e5b2295f7cb2c92c83e8"
 dependencies = [
  "defmt 0.3.5",
- "esp-println",
+ "esp-println 0.9.0",
 ]
 
 [[package]]
@@ -291,6 +292,12 @@ dependencies = [
  "defmt 0.3.5",
  "log",
 ]
+
+[[package]]
+name = "esp-println"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e090867a191aaaa0645f8a7f03c51ab57cee82e2adba5525940dc9ff1c07511"
 
 [[package]]
 name = "esp-riscv-rt"
