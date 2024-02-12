@@ -64,8 +64,8 @@ fn main() -> ! {
     // ANCHOR: client_config_start
     let client_config = Configuration::Client(ClientConfiguration {
         // ANCHOR_END: client_config_start
-        ssid: SSID.into(),
-        password: PASSWORD.into(),
+        ssid: SSID.try_into().unwrap(),
+        password: PASSWORD.try_into().unwrap(),
         auth_method,
         channel,
         ..Default::default() // ANCHOR: client_config_end
