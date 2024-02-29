@@ -3,7 +3,7 @@
 
 use esp_backtrace as _;
 use esp_println::println;
-use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay, IO};
+use esp_hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay, IO};
 
 #[entry]
 fn main() -> ! {

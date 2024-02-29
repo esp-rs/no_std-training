@@ -16,6 +16,10 @@ We cannot do that because on our chips there is the flash/ext-mem cache at the s
 > 🔎 On ESP32-C6/ESP32-H2 cache is not located in the start of RAM which means we can move the stack there.
 > esp-hal offers the feature `flip-link` which will do that and you get stack-overflow protection "for free".
 
+> 🔎 esp-hal also supports [stack smashing protection](https://doc.rust-lang.org/rustc/exploit-mitigations.html#stack-smashing-protection) for all targets which in our case can also double as a simple stack overflow detector. While the overhead is very small, there is some run-time cost involved.
+>
+> To enable it you need a nightly compiler and add `"-Z", "stack-protector=all",` to `rustflags` in `.cargo/config.toml` 
+
 Some of our chips (including ESP32-C3) include the debug-assist peripheral.
 
 This peripheral can monitor the stack-pointer and detect read and/or write access to specified memory areas.

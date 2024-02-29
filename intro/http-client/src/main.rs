@@ -1,26 +1,22 @@
 #![no_std]
 #![no_main]
 
-use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, systimer::SystemTimer, Rng};
+use esp_hal::{
+    clock::ClockControl, peripherals::Peripherals, prelude::*, systimer::SystemTimer, Rng,
+};
 
 use embedded_io::*;
-use embedded_svc::{
-    ipv4::Interface,
-    wifi::{AccessPointInfo, ClientConfiguration, Configuration, Wifi},
-};
+use esp_wifi::wifi::{AccessPointInfo, AuthMethod, ClientConfiguration, Configuration};
 
 use esp_backtrace as _;
 use esp_println::{print, println};
-use esp_wifi::{
-    current_millis, initialize,
-    wifi::{utils::create_network_interface, WifiError, WifiStaDevice},
-    wifi_interface::WifiStack,
-    EspWifiInitFor,
-};
-use smoltcp::{
-    iface::SocketStorage,
-    wire::{IpAddress, Ipv4Address},
-};
+use esp_wifi::wifi::utils::create_network_interface;
+use esp_wifi::wifi::{WifiError, WifiStaDevice};
+use esp_wifi::wifi_interface::WifiStack;
+use esp_wifi::{current_millis, initialize, EspWifiInitFor};
+use smoltcp::iface::SocketStorage;
+use smoltcp::wire::IpAddress;
+use smoltcp::wire::Ipv4Address;
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
@@ -41,7 +37,6 @@ fn main() -> ! {
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
     let (iface, device, mut controller, sockets) =
         create_network_interface(&init, wifi, WifiStaDevice, &mut socket_set_entries).unwrap();
-    let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
     // Create a Client with your Wi-Fi credentials and default configuration.
     // let client_config = Configuration::Client(.....);
     let res = controller.set_configuration(&client_config);
@@ -81,6 +76,7 @@ fn main() -> ! {
     println!("{:?}", controller.is_connected());
 
     // Wait for getting an ip address
+    let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
     println!("Wait to get an ip address");
     loop {
         wifi_stack.work();

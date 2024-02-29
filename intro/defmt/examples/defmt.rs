@@ -5,7 +5,7 @@
 use esp_backtrace as _;
 use esp_println as _;
 // ANCHOR_END: println_include
-use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay};
+use esp_hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay};
 
 #[entry]
 fn main() -> ! {

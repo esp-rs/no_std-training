@@ -5,7 +5,7 @@ use core::cell::RefCell;
 use critical_section::Mutex;
 use esp_backtrace as _;
 use esp_println::println;
-use hal::{
+use esp_hal::{
     clock::ClockControl,
     gpio::{Event, Gpio9, Input, PullUp, IO},
     interrupt,

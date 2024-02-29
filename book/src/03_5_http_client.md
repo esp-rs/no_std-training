@@ -1,6 +1,8 @@
 # HTTP Client
 Next, we'll write a small client that retrieves data over an HTTP connection to the internet.
 
+For demonstration purposes we implement the http client ourselves. Usually you want to use e.g. [`reqwless`](https://crates.io/crates/reqwless) or [`edge-net`](https://crates.io/crates/edge-net)
+
 Before jumping to the exercise, let's explore how Wi-Fi works in `no_std` Rust for Espressif devices.
 
 ## Wi-Fi Ecosystem
@@ -9,15 +11,14 @@ Wi-Fi support comes in the [`esp-wifi` crate][esp-wifi]. The `esp-wifi` is home 
 Check the repository README for current support, limitations and usage details.
 
 There are some other relevant crates, on which `esp-wifi` depends on:
-- [`embedded-svc`][embedded-svc]: Contains traits Wi-Fi.
-  - This allows the code to be portable from `no_std` to `std` approach since both implementations use the same set of traits.
-  - It also contains traits for other features such as networking, HTTPD, and logging but those are not implemented in `esp-wifi`.
 - [`smol-tcp`][smoltcp]: Event-driven TCP/IP stack implementation.
   - It does not require heap allocation (which is a requirement for some `no_std` projects)
   - For more information about the crate, see the [official documentation][smoltcp-docs]
 
+Additionally when using async, [`embassy-net`][embassy-net] is relevant.
+
 [esp-wifi]: https://github.com/esp-rs/esp-wifi
-[embedded-svc]: https://github.com/esp-rs/embedded-svc
+[embassy-net]: https://github.com/embassy-rs/embassy/tree/main/embassy-net
 [smoltcp]: https://github.com/smoltcp-rs/smoltcp
 [smoltcp-docs]: https://docs.rs/smoltcp/latest/smoltcp/
 
@@ -37,7 +38,7 @@ cargo run --release --example http-client
 
 ✅ Read the [Optimization Level] section of the [`esp-wifi`] README.
 
-[Optimization Level]: https://github.com/esp-rs/esp-wifi?tab=readme-ov-file#optimization-level
+[Optimization Level]: https://github.com/esp-rs/esp-wifi/tree/main/esp-wifi#optimization-level
 [`esp-wifi`]: https://github.com/esp-rs/esp-wifi
 
 ## Exercise

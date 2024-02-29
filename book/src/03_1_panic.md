@@ -43,25 +43,13 @@ cargo run --release
 
 Now things are less pretty:
 ```text
-!! A panic occured in 'src/main.rs', at line 24, column 5
-
-PanicInfo {
-    payload: Any { .. },
-    message: Some(
-        This is a panic,
-    ),
-    location: Location {
-        file: "src/main.rs",
-        line: 24,
-        col: 5,
-    },
-    can_unwind: true,
-}
+!! A panic occured in 'examples\panic.rs', at line 15, column 5:
+This is a panic
 
 Backtrace:
 
-0x4200010e
-0x4200010e - _start_rust
+0x42000100
+0x42000100 - _start_rust
     at ??:??
 ```
 
@@ -69,6 +57,15 @@ We still see where the panic occurred, but the backtrace is less helpful now.
 
 That is because the compiler omitted debug information and optimized the code,
 you might have noticed the difference in the size of the flashed binary.
+
+Generally you want to use `release` always. To get a more helpful backtrace when using the `release` profile you can add this to your `.cargo/config.toml`
+
+```toml
+[profile.release]
+debug = true
+```
+
+This will include debug information in the ELF file - but that won't get flashed to the target so it's something you can and should always use.
 
 If you are reusing this project for other exercises, be sure to remove the line causing the explicit panic.
 

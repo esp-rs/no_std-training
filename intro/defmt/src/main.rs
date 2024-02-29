@@ -3,7 +3,7 @@
 
 //  Build the `esp_println` and `esp_backtrace` libs
 
-use hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay};
+use esp_hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay};
 
 #[entry]
 fn main() -> ! {

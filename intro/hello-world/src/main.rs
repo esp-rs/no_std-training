@@ -3,7 +3,7 @@
 
 use esp_backtrace as _;
 use esp_println::println;
-use hal::{peripherals::Peripherals, prelude::*};
+use esp_hal::{peripherals::Peripherals, prelude::*};
 
 #[entry]
 fn main() -> ! {
