@@ -243,8 +243,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal"
-version = "0.15.0"
-source = "git+https://github.com/esp-rs/esp-hal.git#bfb530d3a3d1ef60c175e2687df9bd3241092a25"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e021610c11f106869f382f532fb81de0df98fd2b41299deba81bb62e9c4c4f8"
 dependencies = [
  "basic-toml",
  "bitfield",
@@ -272,15 +273,16 @@ dependencies = [
  "rand_core",
  "riscv",
  "serde",
- "strum 0.25.0",
+ "strum 0.26.2",
  "void",
  "xtensa-lx-rt",
 ]
 
 [[package]]
 name = "esp-hal-procmacros"
-version = "0.8.0"
-source = "git+https://github.com/esp-rs/esp-hal.git#bfb530d3a3d1ef60c175e2687df9bd3241092a25"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05084ecf8446fe60e0aff6c3873c96dca56dc383a449324ca555edbb80ae60c0"
 dependencies = [
  "darling",
  "document-features",
@@ -305,10 +307,11 @@ dependencies = [
 
 [[package]]
 name = "esp-riscv-rt"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8c734d963f250000961ffcb6135d814a3be0456020fe54f06d71c4277769326"
+checksum = "e599762d31156fa2322db4d5a0784c13b6122b79c1fa7bed70953de2f7d731f1"
 dependencies = [
+ "document-features",
  "riscv",
  "riscv-rt-macros",
 ]
@@ -437,9 +440,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "indexmap"
-version = "2.2.4"
+version = "2.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "967d6dd42f16dbf0eb8040cb9e477933562684d3918f7d253f2ff9087fb3e7a3"
+checksum = "7b0b929d511467233429c45a44ac1dcaa21ba0f5ba11e4879e6ed28ddb4f9df4"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -595,9 +598,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb987efffd3c6d0d8f5f89510bb458559eab11e4f869acb20bf845e016259cd"
+checksum = "86b83b8b9847f9bf95ef68afb0b8e6cdb80f498442f5179a29fad448fcc1eaea"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -692,11 +695,11 @@ checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 
 [[package]]
 name = "strum"
-version = "0.25.0"
+version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
+checksum = "5d8cec3501a5194c432b2b7976db6b7d10ec95c253208b45f83f7136aa985e29"
 dependencies = [
- "strum_macros 0.25.3",
+ "strum_macros 0.26.2",
 ]
 
 [[package]]
@@ -714,9 +717,9 @@ dependencies = [
 
 [[package]]
 name = "strum_macros"
-version = "0.25.3"
+version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23dc1fa9ac9c169a78ba62f0b841814b7abae11bdd047b9c58f893439e309ea0"
+checksum = "c6cf59daf282c0a494ba14fd21610a0325f9f90ec9d1231dea26bcb1d696c946"
 dependencies = [
  "heck",
  "proc-macro2",
