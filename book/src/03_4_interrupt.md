@@ -58,11 +58,11 @@ function, hence it needs to be run inside an `unsafe` block.
 The interrupt handler is defined via the `#[interrupt]` macro.
 Here, the name of the function must match the interrupt.
 
-[listen]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/prelude/trait._esp_hal_gpio_Pin.html#method.listen
+[listen]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.0/esp32c3/esp_hal/gpio/trait.Pin.html#method.listen
 [Interrupts]: https://docs.rust-embedded.org/book/start/interrupts.html
 [`critical-section`]: https://crates.io/crates/critical-section
-[possible interrupts]: https://docs.rs/esp32c3/0.5.1/esp32c3/enum.Interrupt.html
-[events]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/gpio/enum.Event.html#variants
+[possible interrupts]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.0/esp32c3/esp32c3/enum.Interrupt.html
+[events]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.0/esp32c3/esp_hal/gpio/enum.Event.html
 
 ## Simulation
 

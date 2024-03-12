@@ -41,7 +41,7 @@ We also see that the HAL offers a way to delay execution.
 
 [ESP32-C3-DevKit-RUST-1]:  https://github.com/esp-rs/esp-rust-board
 [LED connected to GPIO 7]: https://github.com/esp-rs/esp-rust-board#pin-layout
-[into-push-pull-output]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/gpio/struct.GpioPin.html#method.into_push_pull_output
+[into-push-pull-output]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.0/esp32c3/esp_hal/gpio/struct.GpioPin.html#method.into_push_pull_output
 [toogle]: https://docs.rs/embedded-hal/0.2.7/embedded_hal/digital/v2/trait.ToggleableOutputPin.html#tymethod.toggle
 [delay-ms]: https://docs.rs/embedded-hal/0.2.7/embedded_hal/blocking/delay/trait.DelayMs.html#tymethod.delay_ms
 

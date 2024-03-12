@@ -92,8 +92,8 @@ To make an HTTP request, we first need to open a socket, and write to it the GET
 {{#include ../../intro/http-client/examples/http-client.rs:socket_close}}
 ```
 
-[timer]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/systimer/index.html
-[clock]: https://docs.rs/esp32c3-hal/latest/esp32c3_hal/clock/index.html
+[timer]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.0/esp32c3/esp32c3/systimer/index.html
+[clock]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.0/esp32c3/esp_hal/clock/index.html
 
 ## Simulation
 
