@@ -221,9 +221,9 @@ dependencies = [
 
 [[package]]
 name = "esp-hal"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e021610c11f106869f382f532fb81de0df98fd2b41299deba81bb62e9c4c4f8"
+checksum = "cc3e9b3333d2ae42f5c9b4890e162cb756fb1b067ab5f642b89fc9f29be424fa"
 dependencies = [
  "basic-toml",
  "bitfield",
@@ -295,8 +295,9 @@ dependencies = [
 
 [[package]]
 name = "esp-wifi"
-version = "0.3.0"
-source = "git+https://github.com/esp-rs/esp-wifi?rev=d5baf9b#d5baf9b922985c75ad7ba05393a6bde809a1e6c8"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4bdfa4a39424472e5412fb2c7783f2cd42c7780893f440b34958a2df1b48628b"
 dependencies = [
  "atomic-waker",
  "cfg-if",
@@ -323,7 +324,8 @@ dependencies = [
 [[package]]
 name = "esp-wifi-sys"
 version = "0.3.0"
-source = "git+https://github.com/esp-rs/esp-wifi?rev=d5baf9b#d5baf9b922985c75ad7ba05393a6bde809a1e6c8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "551b510b3944844675fcefa1301b3610fe56faa419bcc05dd0dd0056745c6654"
 dependencies = [
  "anyhow",
 ]
