@@ -36,8 +36,8 @@ Similarly to turning a `GPIO` into an `output` we can turn it into an `input`. T
 ✅ In the `loop`, add some logic so if the button is not pressed, the LED is lit. If the button is pressed, the LED is off.
 
 [`BOOT` on `GPIO9`]: https://github.com/esp-rs/esp-rust-board#ios
-[into-pull-up-input]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.0/esp32c3/esp_hal/gpio/struct.GpioPin.html#method.into_pull_up_input
-[into-push-pull-output]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.0/esp32c3/esp_hal/gpio/struct.GpioPin.html#method.into_push_pull_output
+[into-pull-up-input]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.1/esp32c3/esp_hal/gpio/struct.GpioPin.html#method.into_pull_up_input
+[into-push-pull-output]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.1/esp32c3/esp_hal/gpio/struct.GpioPin.html#method.into_push_pull_output
 
 ## Simulation
 
