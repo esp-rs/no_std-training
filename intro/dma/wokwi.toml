@@ -1,9 +1,9 @@
 [wokwi]
 version = 1
 # Exercise
-# firmware = "target/riscv32imc-unknown-none-elf/release/button"
-# elf = "target/riscv32imc-unknown-none-elf/release/button"
+# firmware = "target/riscv32imc-unknown-none-elf/release/dma"
+# elf = "target/riscv32imc-unknown-none-elf/release/dma"
 
 # Solution
-firmware = 'target/riscv32imc-unknown-none-elf/release/examples/button'
-elf = 'target/riscv32imc-unknown-none-elf/release/examples/button'
+firmware = 'target/riscv32imc-unknown-none-elf/release/examples/dma'
+elf = 'target/riscv32imc-unknown-none-elf/release/examples/dma'
