@@ -31,9 +31,9 @@ We need the `Mutex` to make access to the button safe.
 
 > Please note that this is not the Mutex you might know from `libstd` but it's the Mutex from [`critical-section`] (and that's why we need to add it as a dependency).
 
-✅ We need to call [`listen`][listen] on the button pin to configure the peripheral to raise interrupts. We can raise interrupts for [different events][events] - here we want to raise the interrupt on the falling edge.
+✅ We need to set the interrupt handler for the GPIO interrupts.
 
-✅ Let's add a [`critical-section`], using the `with()` method and enable an interrupt:
+✅ Let's add a [`critical-section`], using the `with()` method and enable an interrupt for falling edges:
 
 ```rust,ignore
 {{#include ../../intro/button-interrupt/examples/button-interrupt.rs:critical_section}}
@@ -43,26 +43,11 @@ In this line we move our button into the `static BUTTON` for the interrupt handl
 The code running inside the `critical_section::with` closure runs within a critical section,
 `cs` is a token that you can use to "prove" that to some API.
 
-✅ Enable the interrupt:
-
-```rust,ignore
-{{#include ../../intro/button-interrupt/examples/button-interrupt.rs:interrupt}}
-```
-
-First parameter here is the kind of interrupt we want. There are several [possible interrupts].
-The second parameter, chooses the priority, in our case, we choosed `Priority3`. Priority dictates which interrupts are runned first in case of several interrupts being triggered at the same time.
-
-✅ Enable interrupts: This can be achived by: `riscv::interrupt::enable`, but this is an unsafe
-function, hence it needs to be run inside an `unsafe` block.
-
-The interrupt handler is defined via the `#[interrupt]` macro.
+The interrupt handler is defined via the `#[handler]` macro.
 Here, the name of the function must match the interrupt.
 
-[listen]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.1/esp32c3/esp_hal/gpio/trait.Pin.html#method.listen
 [Interrupts]: https://docs.rust-embedded.org/book/start/interrupts.html
 [`critical-section`]: https://crates.io/crates/critical-section
-[possible interrupts]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.1/esp32c3/esp32c3/enum.Interrupt.html
-[events]: https://docs.esp-rs.org/esp-hal/esp-hal/0.16.1/esp32c3/esp_hal/gpio/enum.Event.html
 
 ## Simulation
 

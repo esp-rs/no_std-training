@@ -2,7 +2,7 @@
 #![no_main]
 
 use esp_hal::{
-    clock::ClockControl, peripherals::Peripherals, prelude::*, systimer::SystemTimer, Rng,
+    clock::ClockControl, peripherals::Peripherals, prelude::*, rng::Rng, systimer::SystemTimer,
 };
 
 use embedded_io::*;

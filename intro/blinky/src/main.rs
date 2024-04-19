@@ -2,8 +2,8 @@
 #![no_main]
 
 use esp_backtrace as _;
+use esp_hal::{clock::ClockControl, delay::Delay, gpio::IO, peripherals::Peripherals, prelude::*};
 use esp_println::println;
-use esp_hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay, IO};
 
 #[entry]
 fn main() -> ! {
