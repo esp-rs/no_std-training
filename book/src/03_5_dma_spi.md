@@ -69,7 +69,7 @@ Now we are free to let the CPU do other things while the SPI transfer is in prog
 
 ✅ Wait for the transfer to complete and get back the buffers and the driver instance
 
-As mentioned before the buffers and the driver are moved into the `Transfer`. If we want to access the received data and transfer more data we need to get them back.
+As mentioned before the buffers and the driver are moved into the `Transfer`.
 
 ```rust,ignore
 {{#include ../../intro/dma/examples/dma.rs:transfer-wait}}

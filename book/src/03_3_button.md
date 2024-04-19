@@ -19,7 +19,7 @@ cargo doc --open
 `intro/button/examples/button.rs` contains the solution. You can run it with the following command:
 
 ```shell
-cargo run --example button
+cargo run --release --example button
 ```
 
 ## Exercise

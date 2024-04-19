@@ -2,8 +2,8 @@
 #![no_main]
 
 use esp_backtrace as _;
+use esp_hal::{clock::ClockControl, delay::Delay, gpio::IO, peripherals::Peripherals, prelude::*};
 use esp_println::println;
-use esp_hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay, IO};
 
 #[entry]
 fn main() -> ! {
@@ -17,14 +17,14 @@ fn main() -> ! {
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
     let mut led = io.pins.gpio7.into_push_pull_output();
 
-    led.set_high().unwrap();
+    led.set_high();
 
     // Initialize the Delay peripheral, and use it to toggle the LED state in a
     // loop.
-    let mut delay = Delay::new(&clocks);
+    let delay = Delay::new(&clocks);
 
     loop {
-        led.toggle().unwrap();
-        delay.delay_ms(500u32);
+        led.toggle();
+        delay.delay_millis(500u32);
     }
 }

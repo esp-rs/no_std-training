@@ -2,8 +2,8 @@
 #![no_main]
 
 use esp_backtrace as _;
+use esp_hal::{gpio::IO, peripherals::Peripherals, prelude::*};
 use esp_println::println;
-use esp_hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, IO};
 
 #[entry]
 fn main() -> ! {
@@ -19,10 +19,10 @@ fn main() -> ! {
 
     // Check the button state and set the LED state accordingly.
     loop {
-        if button.is_high().unwrap() {
-            led.set_high().unwrap();
+        if button.is_high() {
+            led.set_high();
         } else {
-            led.set_low().unwrap();
+            led.set_low();
         }
     }
 }

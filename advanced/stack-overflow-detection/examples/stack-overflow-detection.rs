@@ -5,14 +5,10 @@ use core::cell::RefCell;
 
 use critical_section::Mutex;
 use esp_backtrace as _;
-use esp_println::println;
 use esp_hal::{
-    assist_debug::DebugAssist,
-    clock::ClockControl,
-    interrupt,
-    peripherals::{self, Peripherals},
-    prelude::*,
+    assist_debug::DebugAssist, clock::ClockControl, peripherals::Peripherals, prelude::*,
 };
+use esp_println::println;
 
 #[entry]
 fn main() -> ! {
@@ -21,7 +17,7 @@ fn main() -> ! {
     let _ = ClockControl::boot_defaults(system.clock_control).freeze();
 
     // get the debug assist driver
-    let da = DebugAssist::new(peripherals.ASSIST_DEBUG);
+    let da = DebugAssist::new(peripherals.ASSIST_DEBUG, Some(interrupt_handler));
 
     // set up stack overflow protection
     install_stack_guard(da, 4096);
@@ -71,18 +67,13 @@ fn install_stack_guard(mut da: DebugAssist<'static>, safe_area_size: u32) {
     da.enable_region0_monitor(stack_low, stack_low + safe_area_size, true, true);
 
     critical_section::with(|cs| DA.borrow_ref_mut(cs).replace(da));
-    interrupt::enable(
-        peripherals::Interrupt::ASSIST_DEBUG,
-        interrupt::Priority::Priority1,
-    )
-    .unwrap();
 }
 // ANCHOR_END: debug_assists
 
 // ANCHOR: interrupt
 // ANCHOR: handler
-#[interrupt]
-fn ASSIST_DEBUG() {
+#[handler(priority = esp_hal::interrupt::Priority::min())]
+fn interrupt_handler() {
     // ANCHOR_END: interrupt
 
     critical_section::with(|cs| {

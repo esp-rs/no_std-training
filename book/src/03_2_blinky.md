@@ -18,7 +18,7 @@ cargo doc --open
 `intro/blinky/examples/blinky.rs` contains the solution. You can run it with the following command:
 
 ```shell
-cargo run --example blinky
+cargo run --release --example blinky
 ```
 
 ## Exercise

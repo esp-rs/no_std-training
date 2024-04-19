@@ -39,8 +39,7 @@ fn main() -> ! {
     let dma_channel = dma.channel0;
 
     // DMA transfers need descriptors and buffers
-    let (mut tx_buffer, mut tx_descriptors, mut rx_buffer, mut rx_descriptors) =
-        dma_buffers!(32000);
+    let (mut tx_buffer, mut tx_descriptors, mut rx_buffer, mut rx_descriptors) = dma_buffers!(3200);
     // ANCHOR_END: init-dma
 
     // ANCHOR: configure-spi
@@ -55,7 +54,7 @@ fn main() -> ! {
         ));
     // ANCHOR_END: configure-spi
 
-    let mut delay = Delay::new(&clocks);
+    let delay = Delay::new(&clocks);
 
     // populate the tx_buffer with data to send
     tx_buffer.fill(0x42);
@@ -64,7 +63,7 @@ fn main() -> ! {
         // ANCHOR: transfer
         // `dma_transfer` will move the driver and the buffers into the
         // returned transfer.
-        let transfer = spi.dma_transfer(tx_buffer, rx_buffer).unwrap();
+        let transfer = spi.dma_transfer(&mut tx_buffer, &mut rx_buffer).unwrap();
         // ANCHOR_END: transfer
 
         // here the CPU could do other things while the transfer is taking done without using the CPU
@@ -76,7 +75,7 @@ fn main() -> ! {
         // the buffers and spi are moved into the transfer and
         // we can get it back via `wait`
         // if the transfer isn't completed this will block
-        (tx_buffer, rx_buffer, spi) = transfer.wait().unwrap();
+        transfer.wait().unwrap();
         // ANCHOR_END: transfer-wait
 
         println!();
@@ -86,6 +85,6 @@ fn main() -> ! {
             &rx_buffer[rx_buffer.len() - 10..]
         );
 
-        delay.delay_ms(2500u32);
+        delay.delay_millis(2500u32);
     }
 }

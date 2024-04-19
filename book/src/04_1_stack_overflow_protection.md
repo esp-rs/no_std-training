@@ -18,7 +18,7 @@ We cannot do that because on our chips there is the flash/ext-mem cache at the s
 
 > 🔎 esp-hal also supports [stack smashing protection](https://doc.rust-lang.org/rustc/exploit-mitigations.html#stack-smashing-protection) for all targets which in our case can also double as a simple stack overflow detector. While the overhead is very small, there is some run-time cost involved.
 >
-> To enable it you need a nightly compiler and add `"-Z", "stack-protector=all",` to `rustflags` in `.cargo/config.toml` 
+> To enable it you need a nightly compiler and add `"-Z", "stack-protector=all",` to `rustflags` in `.cargo/config.toml`
 
 Some of our chips (including ESP32-C3) include the debug-assist peripheral.
 
@@ -62,7 +62,7 @@ In this case it's easy to guess the cause of this behavior however in a real wor
 `advanced/stack-overflow-detection/examples/stack-overflow-detection.rs` contains the solution. You can run it with the following command:
 
 ```shell
-cargo run --example stack-overflow-detection
+cargo run --release --example stack-overflow-detection
 ```
 
 ## Exercise

@@ -8,12 +8,18 @@ use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
     delay::Delay,
+    dma::Dma,
+    dma::DmaPriority,
+    dma_buffers,
     gpio::IO,
     peripherals::Peripherals,
     prelude::*,
-    spi::{master::Spi, SpiMode},
+    spi::{
+        master::{prelude::*, Spi},
+        SpiMode,
+    },
 };
-use esp_println::println;
+use esp_println::{print, println};
 
 #[entry]
 fn main() -> ! {
@@ -38,13 +44,13 @@ fn main() -> ! {
 
     loop {
         // ANCHOR: transfer
-        // To transfer much larger amounts of data we can use DMA and 
+        // To transfer much larger amounts of data we can use DMA and
         // the CPU can even do other things while the transfer is in progress
         let mut data = [0x01u8, 0x02, 0x03, 0x04];
         spi.transfer(&mut data).unwrap();
         // ANCHOR_END: transfer
         println!("{:x?}", data);
 
-        delay.delay_ms(2500u32);
+        delay.delay_millis(2500u32);
     }
 }
