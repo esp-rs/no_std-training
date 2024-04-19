@@ -18,7 +18,7 @@ cargo doc --open
 `intro/button-interrupt/examples/button-interrupt.rs` contains the solution. You can run it with the following command:
 
 ```shell
-cargo run --example button-interrupt
+cargo run --release --example button-interrupt
 ```
 
 ## Exercise
