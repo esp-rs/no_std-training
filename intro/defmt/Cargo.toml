@@ -6,12 +6,11 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-esp-hal = { version = "0.17.0", features = ["esp32c3"] }
-esp-backtrace = { version = "0.11.1", features = [
+esp-hal = { version = "0.18.0", features = ["esp32c3"] }
+esp-backtrace = { version = "0.12.0", features = [
     "esp32c3",
     "panic-handler",
     "exception-handler",
-    "println",
     "defmt",
 ] }
 esp-println = { version = "0.9.1", features = [
@@ -20,4 +19,4 @@ esp-println = { version = "0.9.1", features = [
     "log",
     "defmt-espflash",
 ] }
-defmt = "0.3.6"
+defmt = "0.3.8"

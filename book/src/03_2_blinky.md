@@ -27,7 +27,7 @@ On [ESP32-C3-DevKit-RUST-1] there is a regular [LED connected to GPIO 7]. If you
 
 > Note that most of the development boards from Espressif today use an addressable LED which works differently and is beyond the scope of this book. In that case, you can also connect a regular LED to some of the free pins (and don't forget to add a resistor).
 
-✅ Initiate the IO peripheral, and create a `led` variable from GPIO connected to the LED, using the
+✅ Initiate the Io peripheral, and create a `led` variable from GPIO connected to the LED, using the
 [`into_push_pull_output` function][into-push-pull-output].
 
 Here we see that we can drive the pin `high`, `low`, or `toggle` it.

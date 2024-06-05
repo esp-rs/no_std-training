@@ -11,23 +11,24 @@ use esp_hal::{
     dma::Dma,
     dma::DmaPriority,
     dma_buffers,
-    gpio::IO,
+    gpio::Io,
     peripherals::Peripherals,
     prelude::*,
     spi::{
         master::{prelude::*, Spi},
         SpiMode,
     },
+    system::SystemControl,
 };
 use esp_println::{print, println};
 
 #[entry]
 fn main() -> ! {
     let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
+    let system = SystemControl::new(peripherals.SYSTEM);
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
-    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let sclk = io.pins.gpio0;
     let miso = io.pins.gpio2;
     let mosi = io.pins.gpio4;
@@ -63,7 +64,7 @@ fn main() -> ! {
         // ANCHOR: transfer
         // `dma_transfer` will move the driver and the buffers into the
         // returned transfer.
-        let transfer = spi.dma_transfer(&mut tx_buffer, &mut rx_buffer).unwrap();
+        let mut transfer = spi.dma_transfer(&mut tx_buffer, &mut rx_buffer).unwrap();
         // ANCHOR_END: transfer
 
         // here the CPU could do other things while the transfer is taking done without using the CPU

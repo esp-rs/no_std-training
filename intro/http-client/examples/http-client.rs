@@ -2,7 +2,8 @@
 #![no_main]
 
 use esp_hal::{
-    clock::ClockControl, peripherals::Peripherals, prelude::*, rng::Rng, systimer::SystemTimer,
+    clock::ClockControl, peripherals::Peripherals, prelude::*, rng::Rng, system::SystemControl,
+    timer::systimer::SystemTimer,
 };
 
 use embedded_io::*;
@@ -24,7 +25,7 @@ const PASSWORD: &str = env!("PASSWORD");
 #[entry]
 fn main() -> ! {
     let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
+    let system = SystemControl::new(peripherals.SYSTEM);
     // Set clocks at maximum frequency
     let clocks = ClockControl::max(system.clock_control).freeze();
 
@@ -35,7 +36,7 @@ fn main() -> ! {
         EspWifiInitFor::Wifi,
         timer,
         Rng::new(peripherals.RNG),
-        system.radio_clock_control,
+        peripherals.RADIO_CLK,
         &clocks,
     )
     .unwrap();

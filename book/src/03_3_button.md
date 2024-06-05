@@ -27,7 +27,7 @@ cargo run --release --example button
 Most of the dev-boards have a button, in our case, we will use the one labeled [`BOOT` on `GPIO9`].
 
 
-✅ Initiate the IO peripheral, and create variable for the LED and button, the LED can be created using the
+✅ Initiate the Io peripheral, and create variable for the LED and button, the LED can be created using the
 [`into_push_pull_output` function][into-push-pull-output] as before while the button can be obtained using
 [`into_pull_up_input` function][into-pull-up-input].
 
