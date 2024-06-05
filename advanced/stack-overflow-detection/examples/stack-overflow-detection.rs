@@ -7,13 +7,14 @@ use critical_section::Mutex;
 use esp_backtrace as _;
 use esp_hal::{
     assist_debug::DebugAssist, clock::ClockControl, peripherals::Peripherals, prelude::*,
+    system::SystemControl,
 };
 use esp_println::println;
 
 #[entry]
 fn main() -> ! {
     let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
+    let system = SystemControl::new(peripherals.SYSTEM);
     let _ = ClockControl::boot_defaults(system.clock_control).freeze();
 
     // get the debug assist driver

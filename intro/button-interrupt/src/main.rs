@@ -7,31 +7,31 @@ use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
     delay::Delay,
-    gpio::{Event, Gpio9, Input, PullUp, IO},
-    interrupt,
+    gpio::{self, Event, Gpio9, Input, Io, Level, Output, Pull},
     peripherals::Peripherals,
     prelude::*,
+    system::SystemControl,
 };
 use esp_println::println;
 
-static BUTTON: Mutex<RefCell<Option<Gpio9<Input<PullUp>>>>> = Mutex::new(RefCell::new(None));
+static BUTTON: Mutex<RefCell<Option<Input<Gpio9>>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
 fn main() -> ! {
     let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
+    let system = SystemControl::new(peripherals.SYSTEM);
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
     println!("Hello world!");
 
-    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     // Set the interrupt handler for GPIO interrupts.
 
     // Set GPIO7 as an output, and set its state high initially.
-    let mut led = io.pins.gpio7.into_push_pull_output();
+    let mut led = Output::new(io.pins.gpio7, Level::Low);
 
     // Set GPIO9 as an input
-    let mut button = io.pins.gpio9.into_pull_up_input();
+    let mut button = Input::new(io.pins.gpio9, Pull::Up);
 
     let delay = Delay::new(&clocks);
     loop {}

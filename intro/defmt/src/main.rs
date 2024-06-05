@@ -3,12 +3,14 @@
 
 //  Build the `esp_println` and `esp_backtrace` libs
 
-use esp_hal::{clock::ClockControl, delay::Delay, peripherals::Peripherals, prelude::*};
+use esp_hal::{
+    clock::ClockControl, delay::Delay, peripherals::Peripherals, prelude::*, system::SystemControl,
+};
 
 #[entry]
 fn main() -> ! {
     let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
+    let system = SystemControl::new(peripherals.SYSTEM);
     let clocks = ClockControl::max(system.clock_control).freeze();
     let delay = Delay::new(&clocks);
 
