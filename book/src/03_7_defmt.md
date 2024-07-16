@@ -15,8 +15,8 @@ In this chapter, we will cover [`defmt`][defmt], a highly efficient logging fram
 - `esp-backtrace` has a `defmt` feature that uses `defmt` logging to print panic and exception handler messages.
 
 
-[esp-println]: https://github.com/esp-rs/esp-println
-[esp-backtrace]: https://github.com/esp-rs/esp-backtrace
+[esp-println]: https://github.com/esp-rs/esp-hal/tree/main/esp-println
+[esp-backtrace]: https://github.com/esp-rs/esp-hal/tree/main/esp-backtrace
 [espflash]: https://github.com/esp-rs/espflash
 [espflash-logformat]: https://github.com/esp-rs/espflash/blob/main/espflash/README.md#logging-format
 

@@ -2,8 +2,12 @@
 #![no_main]
 
 use esp_hal::{
-    clock::ClockControl, peripherals::Peripherals, prelude::*, rng::Rng, system::SystemControl,
-    timer::systimer::SystemTimer,
+    clock::ClockControl,
+    peripherals::Peripherals,
+    prelude::*,
+    rng::Rng,
+    system::SystemControl,
+    timer::{systimer::SystemTimer, PeriodicTimer},
 };
 
 use embedded_io::*;
