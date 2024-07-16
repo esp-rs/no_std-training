@@ -17,7 +17,7 @@ lto = "off"
 
 [dependencies]
 esp-hal = { version = "0.19.0", features = ["esp32c3"] }
-esp-backtrace = { version = "0.12.2", features = [
+esp-backtrace = { version = "0.13.0", features = [
     "esp32c3",
     "panic-handler",
     "exception-handler",
