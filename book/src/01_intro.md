@@ -8,7 +8,7 @@ The goal of this book is to provide a getting-started guide on using the Rust pr
 
 The introductory trail will introduce you to the basics of embedded development and how to make the embedded board interact with the outside world by reacting to a button press, and lighting an LED.
 
-> Note that there are several examples covering the use of specific peripherals under the examples folder of `esp-hal`. See [`esp-hal/examples`]()
+> Note that there are several examples covering the use of specific peripherals under the examples folder of `esp-hal`. See [`esp-hal/examples`].
 
 If you would like to learn about `std` development, see [Using the Standard Library (std)] chapter of [The Rust on ESP Book] and,
 [Embedded Rust on Espressif] training.

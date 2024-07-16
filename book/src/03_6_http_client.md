@@ -15,9 +15,9 @@ There are some other relevant crates, on which `esp-wifi` depends on:
   - It does not require heap allocation (which is a requirement for some `no_std` projects)
   - For more information about the crate, see the [official documentation][smoltcp-docs]
 
-Additionally when using async, [`embassy-net`][embassy-net] is relevant.
+Additionally, when using async, [`embassy-net`][embassy-net] is relevant.
 
-[esp-wifi]: https://github.com/esp-rs/esp-wifi
+[esp-wifi]: https://github.com/esp-rs/esp-hal/tree/main/esp-wifi
 [embassy-net]: https://github.com/embassy-rs/embassy/tree/main/embassy-net
 [smoltcp]: https://github.com/smoltcp-rs/smoltcp
 [smoltcp-docs]: https://docs.rs/smoltcp/latest/smoltcp/
@@ -38,8 +38,8 @@ cargo run --release --example http-client
 
 ✅ Read the [Optimization Level] section of the [`esp-wifi`] README.
 
-[Optimization Level]: https://github.com/esp-rs/esp-wifi/tree/main/esp-wifi#optimization-level
-[`esp-wifi`]: https://github.com/esp-rs/esp-wifi
+[Optimization Level]: https://github.com/esp-rs/esp-hal/tree/main/esp-wifi#optimization-level
+[`esp-wifi`]: https://github.com/esp-rs/esp-hal/tree/main/esp-wifi
 
 ## Exercise
 
