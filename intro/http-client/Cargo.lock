@@ -371,9 +371,9 @@ dependencies = [
 
 [[package]]
 name = "esp-wifi"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87071ea2e20ce3ea82cc16e050951fd0e7316111fef610f44bd474c06bbbad7f"
+checksum = "7ba911553329cdd61a1a503d6f71c85f17127447736c3d2522b7ee87d318affd"
 dependencies = [
  "atomic-waker",
  "cfg-if",
