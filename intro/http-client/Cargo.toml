@@ -24,7 +24,7 @@ esp-backtrace = { version = "0.13.0", features = [
     "println",
 ] }
 esp-println = { version = "0.10.0", features = ["esp32c3"] }
-esp-wifi = { version = "0.7.0", features = [
+esp-wifi = { version = "0.7.1", features = [
     "esp32c3",
     "wifi-default",
     "utils",
