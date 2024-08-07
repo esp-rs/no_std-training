@@ -36,7 +36,7 @@ We also see that the HAL offers a way to delay execution.
 
 ✅ Initialize a Delay instance.
 
-✅ Using the [`toogle()`][toogle] and [`delay_ms()`][delay-ms] methods, make the LED blink every 500 ms.
+✅ Using the [`toggle()`][toggle] and [`delay_ms()`][delay-ms] methods, make the LED blink every 500 ms.
 
 
 [ESP32-C3-DevKit-RUST-1]:  https://github.com/esp-rs/esp-rust-board
