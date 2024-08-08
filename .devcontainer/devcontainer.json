@@ -6,7 +6,7 @@
     "build": {
         "dockerfile": "Dockerfile",
         "args": {
-            "NIGHTLY_VERSION": "nightly-2023-11-14"
+            "RUST_CHANNEL": "stable"
         }
     },
     "customizations": {
