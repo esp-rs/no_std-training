@@ -7,7 +7,7 @@ ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 ARG CONTAINER_USER=esp
 ARG CONTAINER_GROUP=esp
-ARG NIGHTLY_VERSION=nightly-2023-11-14
+ARG RUST_CHANNEL=stable
 ARG ESP_BOARD=esp32c3
 
 RUN apt-get update \
@@ -21,7 +21,7 @@ USER ${CONTAINER_USER}
 WORKDIR /home/${CONTAINER_USER}
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
-    --default-toolchain ${NIGHTLY_VERSION} -y --profile minimal \
+    --default-toolchain ${RUST_CHANNEL} -y --profile minimal \
     --component rust-src,clippy,rustfmt --target riscv32imc-unknown-none-elf
 
 ENV PATH=${PATH}:$HOME/.cargo/bin
