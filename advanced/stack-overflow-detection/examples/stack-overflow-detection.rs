@@ -18,7 +18,8 @@ fn main() -> ! {
     let _ = ClockControl::boot_defaults(system.clock_control).freeze();
 
     // get the debug assist driver
-    let da = DebugAssist::new(peripherals.ASSIST_DEBUG, Some(interrupt_handler));
+    let mut da = DebugAssist::new(peripherals.ASSIST_DEBUG);
+    da.set_interrupt_handler(interrupt_handler);
 
     // set up stack overflow protection
     install_stack_guard(da, 4096);
