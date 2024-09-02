@@ -28,6 +28,7 @@ Several tools are required:
 ```console
 cargo install cargo-espflash espflash
 ```
+⚠️ On MacOS, use `cargo install cargo-espflash espflash --locked` due to [this issue](https://github.com/esp-rs/espflash/issues/671#issuecomment-2320549526)
 
 ⚠️ The `espflash` and `cargo-espflash` commands listed in the book assume version is >= 2
 
