@@ -2,12 +2,7 @@
 #![no_main]
 
 use esp_hal::{
-    clock::ClockControl,
-    peripherals::Peripherals,
-    prelude::*,
-    rng::Rng,
-    system::SystemControl,
-    timer::{systimer::SystemTimer, PeriodicTimer},
+    clock::ClockControl, peripherals::Peripherals, prelude::*, rng::Rng, system::SystemControl,
 };
 
 use embedded_io::*;
@@ -35,10 +30,10 @@ fn main() -> ! {
 
     // Initialize the timers used for Wifi
     // ANCHOR: wifi_init
-    let timer = PeriodicTimer::new(SystemTimer::new(peripherals.SYSTIMER).alarm0.into());
+    let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0, &clocks);
     let init = initialize(
         EspWifiInitFor::Wifi,
-        timer,
+        timg0.timer0,
         Rng::new(peripherals.RNG),
         peripherals.RADIO_CLK,
         &clocks,

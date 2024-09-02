@@ -2,12 +2,7 @@
 #![no_main]
 
 use esp_hal::{
-    clock::ClockControl,
-    peripherals::Peripherals,
-    prelude::*,
-    rng::Rng,
-    system::SystemControl,
-    timer::{systimer::SystemTimer, PeriodicTimer},
+    clock::ClockControl, peripherals::Peripherals, prelude::*, rng::Rng, system::SystemControl,
 };
 
 use embedded_io::*;
@@ -34,7 +29,7 @@ fn main() -> ! {
     // let clocks =
 
     // Create a timer and initialize the Wi-Fi
-    // let timer =
+    // let timg0 =
     // let init =
 
     // Configure Wifi
