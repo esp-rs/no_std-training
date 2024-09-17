@@ -52,7 +52,7 @@ jobs:
           cp ${{ matrix.project.name }}/Cargo.toml ${{ matrix.project.path }}/Cargo.toml
 
       - name: Create wokwi.toml
-        run: echo -e "[wokwi]\nversion = 1\nfirmware = '${{ matrix.project.name }}/${{ matrix.project.name }}'\nelf = '${{ matrix.project.name }}/${{ matrix.project.name }}'" > ${{ matrix.project.path }}/wokwi.toml
+        run: echo -e "[wokwi]\nversion = 1\nfirmware = '${{ matrix.project.name }}'\nelf = '${{ matrix.project.name }}'" > ${{ matrix.project.path }}/wokwi.toml
 
       - name: Update ownership
         run: |
@@ -69,10 +69,9 @@ jobs:
           run: |
             cd /home/esp/workspace/${{ matrix.project.path }}
             export SSID="Wokwi-GUEST" && export PASSWORD=""
-            /home/esp/.cargo/bin/cargo build --release --out-dir /home/esp/workspace/${{ matrix.project.path }}/${{ matrix.project.name }} -Z unstable-options
+            /home/esp/.cargo/bin/cargo build --release
+            cp /home/esp/workspace/${{ matrix.project.path }}/target/riscv32imc-unknown-none-elf/release/${{ matrix.project.name }} /home/esp/workspace/${{ matrix.project.path }}/${{ matrix.project.name }}
             rm -rf /home/esp/workspace/${{ matrix.project.path }}/target
-
-      - run: cat ${{ matrix.project.path }}/wokwi.toml
 
       - name: Wokwi CI check
         uses: wokwi/wokwi-ci-action@v1
