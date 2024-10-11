@@ -6,27 +6,18 @@
 
 use esp_backtrace as _;
 use esp_hal::{
-    clock::ClockControl,
     delay::Delay,
-    dma::Dma,
-    dma::DmaPriority,
+    dma::{Dma, DmaPriority, DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::Io,
-    peripherals::Peripherals,
     prelude::*,
-    spi::{
-        master::{prelude::*, Spi},
-        SpiMode,
-    },
-    system::SystemControl,
+    spi::{master::Spi, SpiMode},
 };
 use esp_println::{print, println};
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = SystemControl::new(peripherals.SYSTEM);
-    let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+    let peripherals = esp_hal::init(esp_hal::Config::default());
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let sclk = io.pins.gpio0;
@@ -40,31 +31,32 @@ fn main() -> ! {
     let dma_channel = dma.channel0;
 
     // DMA transfers need descriptors and buffers
-    let (mut tx_buffer, mut tx_descriptors, mut rx_buffer, mut rx_descriptors) = dma_buffers!(3200);
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32000);
+    let mut dma_rx_buf = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
+    let mut dma_tx_buf = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
     // ANCHOR_END: init-dma
 
     // ANCHOR: configure-spi
     // we can call `.with_dma` on the SPI driver to make it use DMA
-    let mut spi = Spi::new(peripherals.SPI2, 100u32.kHz(), SpiMode::Mode0, &clocks)
-        .with_pins(Some(sclk), Some(mosi), Some(miso), Some(cs))
-        .with_dma(dma_channel.configure(
-            false,
-            &mut tx_descriptors,
-            &mut rx_descriptors,
-            DmaPriority::Priority0,
-        ));
+    let mut spi = Spi::new(peripherals.SPI2, 100.kHz(), SpiMode::Mode0)
+        .with_pins(sclk, mosi, miso, cs)
+        .with_dma(dma_channel.configure(false, DmaPriority::Priority0));
     // ANCHOR_END: configure-spi
 
-    let delay = Delay::new(&clocks);
+    let delay = Delay::new();
 
     // populate the tx_buffer with data to send
-    tx_buffer.fill(0x42);
+    // tx_buffer.fill(0x42);
+    dma_tx_buf.as_mut_slice().fill(0x42);
 
     loop {
         // ANCHOR: transfer
         // `dma_transfer` will move the driver and the buffers into the
         // returned transfer.
-        let mut transfer = spi.dma_transfer(&mut tx_buffer, &mut rx_buffer).unwrap();
+        let transfer = spi
+            .dma_transfer(dma_rx_buf, dma_tx_buf)
+            .map_err(|e| e.0)
+            .unwrap();
         // ANCHOR_END: transfer
 
         // here the CPU could do other things while the transfer is taking done without using the CPU
@@ -76,14 +68,14 @@ fn main() -> ! {
         // the buffers and spi are moved into the transfer and
         // we can get it back via `wait`
         // if the transfer isn't completed this will block
-        transfer.wait().unwrap();
+        (spi, (dma_rx_buf, dma_tx_buf)) = transfer.wait();
         // ANCHOR_END: transfer-wait
 
         println!();
         println!(
             "Received {:x?} .. {:x?}",
-            &rx_buffer[..10],
-            &rx_buffer[rx_buffer.len() - 10..]
+            &dma_rx_buf.as_slice()[..10],
+            &dma_rx_buf.as_slice().last_chunk::<10>().unwrap()
         );
 
         delay.delay_millis(2500u32);
