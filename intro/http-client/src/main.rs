@@ -2,31 +2,41 @@
 #![no_main]
 
 use esp_hal::{
-    clock::ClockControl, peripherals::Peripherals, prelude::*, rng::Rng, system::SystemControl,
+    prelude::*,
+    rng::Rng,
+    time::{self, Duration},
 };
 
-use embedded_io::*;
-use esp_wifi::wifi::{AccessPointInfo, AuthMethod, ClientConfiguration, Configuration};
-
+extern crate alloc;
+use esp_alloc as _;
 use esp_backtrace as _;
 use esp_println::{print, println};
-use esp_wifi::wifi::utils::create_network_interface;
-use esp_wifi::wifi::{WifiError, WifiStaDevice};
-use esp_wifi::wifi_interface::WifiStack;
-use esp_wifi::{current_millis, initialize, EspWifiInitFor};
+
+use embedded_io::*;
+use esp_wifi::{
+    init,
+    wifi::{
+        utils::create_network_interface, AccessPointInfo, AuthMethod, ClientConfiguration,
+        Configuration, WifiError, WifiStaDevice,
+    },
+    wifi_interface::WifiStack,
+    EspWifiInitFor,
+};
 use smoltcp::iface::SocketStorage;
 use smoltcp::wire::IpAddress;
 use smoltcp::wire::Ipv4Address;
-
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = SystemControl::new(peripherals.SYSTEM);
-    // Set clocks at maximum frequency
-    // let clocks =
+    let peripherals = esp_hal::init({
+        let mut config = esp_hal::Config::default();
+        config.cpu_clock = CpuClock::max();
+        config
+    });
+
+    esp_alloc::heap_allocator!(72 * 1024);
 
     // Create a timer and initialize the Wi-Fi
     // let timg0 =
@@ -36,15 +46,15 @@ fn main() -> ! {
     let wifi = peripherals.WIFI;
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
     let (iface, device, mut controller, sockets) =
-        create_network_interface(&init, wifi, WifiStaDevice, &mut socket_set_entries).unwrap();
+        create_network_interface(&init, &mut wifi, WifiStaDevice, &mut socket_set_entries).unwrap();
     // Create a Client with your Wi-Fi credentials and default configuration.
     // let client_config = Configuration::Client(.....);
     let res = controller.set_configuration(&client_config);
-    println!("wifi_set_configuration returned {:?}", res);
+    println!("Wi-Fi set_configuration returned {:?}", res);
 
     // Start Wi-Fi controller, scan the available networks.
     controller.start().unwrap();
-    println!("is wifi started: {:?}", controller.is_started());
+    println!("Is wifi started: {:?}", controller.is_started());
 
     println!("Start Wifi Scan");
     let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
@@ -55,7 +65,7 @@ fn main() -> ! {
     }
 
     println!("{:?}", controller.get_capabilities());
-    println!("wifi_connect {:?}", controller.connect());
+    println!("Wi-Fi connect: {:?}", controller.connect());
 
     // Wait to get connected
     println!("Wait to get connected");
@@ -76,7 +86,8 @@ fn main() -> ! {
     println!("{:?}", controller.is_connected());
 
     // Wait for getting an ip address
-    let wifi_stack = WifiStack::new(iface, device, sockets, current_millis);
+    let now = || time::now().duration_since_epoch().to_millis();
+    let wifi_stack = WifiStack::new(iface, device, sockets, now);
     println!("Wait to get an ip address");
     loop {
         wifi_stack.work();
@@ -105,17 +116,13 @@ fn main() -> ! {
         // socket...
         // socket...
 
-        let wait_end = current_millis() + 20 * 1000;
-        loop {
-            let mut buffer = [0u8; 512];
-            if let Ok(len) = socket.read(&mut buffer) {
-                let to_print = unsafe { core::str::from_utf8_unchecked(&buffer[..len]) };
-                print!("{}", to_print);
-            } else {
-                break;
-            }
+        let deadline = time::now() + Duration::secs(20);
+        let mut buffer = [0u8; 512];
+        while let Ok(len) = socket.read(&mut buffer) {
+            let to_print = unsafe { core::str::from_utf8_unchecked(&buffer[..len]) };
+            print!("{}", to_print);
 
-            if current_millis() > wait_end {
+            if time::now() > deadline {
                 println!("Timeout");
                 break;
             }
@@ -124,8 +131,8 @@ fn main() -> ! {
 
         socket.disconnect();
 
-        let wait_end = current_millis() + 5 * 1000;
-        while current_millis() < wait_end {
+        let deadline = time::now() + Duration::secs(5);
+        while time::now() < deadline {
             socket.work();
         }
     }
