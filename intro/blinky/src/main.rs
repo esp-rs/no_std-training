@@ -3,20 +3,15 @@
 
 use esp_backtrace as _;
 use esp_hal::{
-    clock::ClockControl,
     delay::Delay,
     gpio::{Io, Level, Output},
-    peripherals::Peripherals,
     prelude::*,
-    system::SystemControl,
 };
 use esp_println::println;
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = SystemControl::new(peripherals.SYSTEM);
-    let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+    let peripherals = esp_hal::init(esp_hal::Config::default());
 
     println!("Hello world!");
 
@@ -24,5 +19,6 @@ fn main() -> ! {
 
     // Initialize the Delay peripheral, and use it to toggle the LED state in a
     // loop.
+
     loop {}
 }
