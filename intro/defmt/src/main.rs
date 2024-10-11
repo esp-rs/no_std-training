@@ -3,16 +3,12 @@
 
 //  Build the `esp_println` and `esp_backtrace` libs
 
-use esp_hal::{
-    clock::ClockControl, delay::Delay, peripherals::Peripherals, prelude::*, system::SystemControl,
-};
+use esp_hal::{delay::Delay, prelude::*};
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = SystemControl::new(peripherals.SYSTEM);
-    let clocks = ClockControl::max(system.clock_control).freeze();
-    let delay = Delay::new(&clocks);
+    esp_hal::init(esp_hal::Config::default());
+    let delay = Delay::new();
 
     // Print a log or a message using defmt
 

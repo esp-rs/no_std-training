@@ -16,15 +16,16 @@ opt-level = 3
 lto = "off"
 
 [dependencies]
-esp-hal = { version = "0.20.1", features = ["esp32c3"] }
-esp-backtrace = { version = "0.14.0", features = [
+esp-alloc = "0.5.0"
+esp-hal = { version = "0.21.0", features = ["esp32c3"] }
+esp-backtrace = { version = "0.14.2", features = [
     "esp32c3",
     "panic-handler",
     "exception-handler",
     "println",
 ] }
-esp-println = { version = "0.11.0", features = ["esp32c3"] }
-esp-wifi = { version = "0.8.0", features = [
+esp-println = { version = "0.12.0", features = ["esp32c3"] }
+esp-wifi = { version = "0.10.1", features = [
     "esp32c3",
     "wifi-default",
     "utils",

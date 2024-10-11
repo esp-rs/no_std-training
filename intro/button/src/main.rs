@@ -6,14 +6,12 @@ use esp_hal::{
     gpio::{Input, Io, Level, Output, Pull},
     peripherals::Peripherals,
     prelude::*,
-    system::SystemControl,
 };
 use esp_println::println;
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let _system = SystemControl::new(peripherals.SYSTEM);
+    let peripherals = esp_hal::init(esp_hal::Config::default());
 
     println!("Hello world!");
 

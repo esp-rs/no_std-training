@@ -6,27 +6,18 @@
 
 use esp_backtrace as _;
 use esp_hal::{
-    clock::ClockControl,
     delay::Delay,
-    dma::Dma,
-    dma::DmaPriority,
+    dma::{Dma, DmaPriority, DmaRxBuf, DmaTxBuf},
     dma_buffers,
     gpio::Io,
-    peripherals::Peripherals,
     prelude::*,
-    spi::{
-        master::{prelude::*, Spi},
-        SpiMode,
-    },
-    system::SystemControl,
+    spi::{master::Spi, SpiMode},
 };
 use esp_println::{print, println};
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = SystemControl::new(peripherals.SYSTEM);
-    let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+    let peripherals = esp_hal::init(esp_hal::Config::default());
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let sclk = io.pins.gpio0;
@@ -34,14 +25,10 @@ fn main() -> ! {
     let mosi = io.pins.gpio4;
     let cs = io.pins.gpio5;
 
-    let mut spi = Spi::new(peripherals.SPI2, 100u32.kHz(), SpiMode::Mode0, &clocks).with_pins(
-        Some(sclk),
-        Some(mosi),
-        Some(miso),
-        Some(cs),
-    );
+    let mut spi =
+        Spi::new(peripherals.SPI2, 100.kHz(), SpiMode::Mode0).with_pins(sclk, mosi, miso, cs);
 
-    let mut delay = Delay::new(&clocks);
+    let delay = Delay::new();
 
     loop {
         // ANCHOR: transfer

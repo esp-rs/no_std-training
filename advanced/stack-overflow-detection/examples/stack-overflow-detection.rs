@@ -5,17 +5,12 @@ use core::cell::RefCell;
 
 use critical_section::Mutex;
 use esp_backtrace as _;
-use esp_hal::{
-    assist_debug::DebugAssist, clock::ClockControl, peripherals::Peripherals, prelude::*,
-    system::SystemControl,
-};
+use esp_hal::{assist_debug::DebugAssist, prelude::*};
 use esp_println::println;
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = SystemControl::new(peripherals.SYSTEM);
-    let _ = ClockControl::boot_defaults(system.clock_control).freeze();
+    let peripherals = esp_hal::init(esp_hal::Config::default());
 
     // get the debug assist driver
     let mut da = DebugAssist::new(peripherals.ASSIST_DEBUG);
