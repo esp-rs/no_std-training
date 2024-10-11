@@ -5,22 +5,17 @@ use core::cell::RefCell;
 use critical_section::Mutex;
 use esp_backtrace as _;
 use esp_hal::{
-    clock::ClockControl,
     delay::Delay,
-    gpio::{self, Event, Gpio9, Input, Io, Level, Output, Pull},
-    peripherals::Peripherals,
+    gpio::{Event, Input, Io, Level, Output, Pull},
     prelude::*,
-    system::SystemControl,
 };
 use esp_println::println;
 
-static BUTTON: Mutex<RefCell<Option<Input<Gpio9>>>> = Mutex::new(RefCell::new(None));
+static BUTTON: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = SystemControl::new(peripherals.SYSTEM);
-    let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+    let peripherals = esp_hal::init(esp_hal::Config::default());
 
     println!("Hello world!");
 
@@ -33,7 +28,7 @@ fn main() -> ! {
     // Set GPIO9 as an input
     let mut button = Input::new(io.pins.gpio9, Pull::Up);
 
-    let delay = Delay::new(&clocks);
+    let delay = Delay::new();
     loop {}
 }
 
