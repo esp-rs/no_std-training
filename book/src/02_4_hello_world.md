@@ -1,6 +1,6 @@
 # Hello World
 
-The `hello-world` example is basically a project generated with [esp-template]. Templates are already covered in [The Rust on ESP Book], see [Generating Projects from Templates] chapter for more details on how to generate a project from the [esp-template], and [Understanding esp-template] for detail on what is inside the template project.
+The `hello-world` example is basically a project generated with [esp-generate]. Templates are already covered in [The Rust on ESP Book], see [Generating Projects from Templates] chapter for more details on how to generate a project from the [esp-generate], and [Understanding esp-generate] for detail on what is inside the template project.
 
 Since we already have the code for this example, let's use it to do a consistency check!
 
@@ -45,10 +45,10 @@ Hello world!
 
 > 💡 By default espflash will use a baud-rate of 115200 which is quite conservative. An easy way to increase the baud-rate is setting the environment variable `ESPFLASH_BAUD` to e.g. 921600
 
-[esp-template]: https://github.com/esp-rs/esp-template
+[esp-generate]: https://github.com/esp-rs/esp-generate
 [The Rust on ESP Book]: https://esp-rs.github.io/book/
 [Generating Projects from Templates]: https://esp-rs.github.io/book/writing-your-own-application/generate-project/index.html
-[Understanding esp-template]: https://esp-rs.github.io/book/writing-your-own-application/generate-project/esp-template.html
+[Understanding esp-generate]: https://esp-rs.github.io/book/writing-your-own-application/generate-project/esp-generate.html
 
 ## Simulation
 
