@@ -13,7 +13,7 @@ cd intro/hello-world
 ✅ Build, flash, and monitor the project:
 
 ```console
-$ cargo run
+$ cargo run --release
 (...)
 Finished release [optimized] target(s) in 1.78s
 (...)
@@ -33,7 +33,7 @@ Commands:
     CTRL+C    Exit
 (...)
 (...)
-Hello world!
+INFO - Hello world!
 ```
 
 >🔎 If `cargo run` has been successful, you can exit with `ctrl+C`.

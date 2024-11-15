@@ -2,14 +2,17 @@
 #![no_main]
 
 use esp_backtrace as _;
+use esp_hal::delay::Delay;
 use esp_hal::prelude::*;
-use esp_println::println;
+use log::info;
 
 #[entry]
 fn main() -> ! {
-    esp_hal::init(esp_hal::Config::default());
+    esp_println::logger::init_logger_from_env();
 
-    println!("Hello world!");
-
-    loop {}
+    let delay = Delay::new();
+    loop {
+        info!("Hello world!");
+        delay.delay(500.millis());
+    }
 }
