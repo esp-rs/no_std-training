@@ -4,8 +4,6 @@ runner = "espflash flash --monitor"
 [build]
 rustflags = [
   "-C", "link-arg=-Tlinkall.x",
-  # TODO: Explain
-  "-C", "link-arg=-Trom_functions.x",
   # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
   # NOTE: May negatively impact performance of produced code
   "-C", "force-frame-pointers",
