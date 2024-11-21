@@ -12,6 +12,7 @@ use esp_alloc as _;
 use esp_backtrace as _;
 use esp_println::{print, println};
 
+use blocking_network_stack::Stack;
 use embedded_io::*;
 use esp_wifi::{
     init,
@@ -19,12 +20,13 @@ use esp_wifi::{
         utils::create_network_interface, AccessPointInfo, AuthMethod, ClientConfiguration,
         Configuration, WifiError, WifiStaDevice,
     },
-    wifi_interface::WifiStack,
-    EspWifiInitFor,
 };
-use smoltcp::iface::SocketStorage;
-use smoltcp::wire::IpAddress;
-use smoltcp::wire::Ipv4Address;
+
+use smoltcp::{
+    iface::{SocketSet, SocketStorage},
+    wire::{DhcpOption, IpAddress, Ipv4Address},
+};
+
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
@@ -45,8 +47,10 @@ fn main() -> ! {
     // Configure Wifi
     let wifi = peripherals.WIFI;
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
-    let (iface, device, mut controller, sockets) =
-        create_network_interface(&init, &mut wifi, WifiStaDevice, &mut socket_set_entries).unwrap();
+    let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
+    let mut dhcp_socket = smoltcp::socket::dhcpv4::Socket::new();
+    let (iface, device, mut controller) =
+        create_network_interface(&init, &mut wifi, WifiStaDevice).unwrap();
     // Create a Client with your Wi-Fi credentials and default configuration.
     // let client_config = Configuration::Client(.....);
     let res = controller.set_configuration(&client_config);
