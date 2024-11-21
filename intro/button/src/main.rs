@@ -3,8 +3,7 @@
 
 use esp_backtrace as _;
 use esp_hal::{
-    gpio::{Input, Io, Level, Output, Pull},
-    peripherals::Peripherals,
+    gpio::{Input, Level, Output, Pull},
     prelude::*,
 };
 use esp_println::println;
