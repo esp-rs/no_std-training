@@ -2,6 +2,7 @@
 #![no_main]
 
 use core::cell::RefCell;
+use core::ptr::addr_of_mut;
 
 use critical_section::Mutex;
 use esp_backtrace as _;

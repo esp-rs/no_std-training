@@ -12,6 +12,7 @@ use esp_alloc as _;
 use esp_backtrace as _;
 use esp_println::{print, println};
 
+use blocking_network_stack::Stack;
 use embedded_io::*;
 use esp_wifi::{
     init,
@@ -19,12 +20,12 @@ use esp_wifi::{
         utils::create_network_interface, AccessPointInfo, AuthMethod, ClientConfiguration,
         Configuration, WifiError, WifiStaDevice,
     },
-    wifi_interface::WifiStack,
-    EspWifiInitFor,
 };
-use smoltcp::iface::SocketStorage;
-use smoltcp::wire::IpAddress;
-use smoltcp::wire::Ipv4Address;
+
+use smoltcp::{
+    iface::{SocketSet, SocketStorage},
+    wire::{DhcpOption, IpAddress, Ipv4Address},
+};
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
@@ -42,21 +43,15 @@ fn main() -> ! {
     // Initialize the timers used for Wifi
     // ANCHOR: wifi_init
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
-    let init = init(
-        EspWifiInitFor::Wifi,
-        timg0.timer0,
-        Rng::new(peripherals.RNG),
-        peripherals.RADIO_CLK,
-    )
-    .unwrap();
+    let mut rng = Rng::new(peripherals.RNG);
+    let init = init(timg0.timer0, rng.clone(), peripherals.RADIO_CLK).unwrap();
     // ANCHOR_END: wifi_init
 
     // Configure Wifi
     // ANCHOR: wifi_config
     let mut wifi = peripherals.WIFI;
-    let mut socket_set_entries: [SocketStorage; 3] = Default::default();
-    let (iface, device, mut controller, sockets) =
-        create_network_interface(&init, &mut wifi, WifiStaDevice, &mut socket_set_entries).unwrap();
+    let (iface, device, mut controller) =
+        create_network_interface(&init, &mut wifi, WifiStaDevice).unwrap();
     // ANCHOR_END: wifi_config
 
     let mut auth_method = AuthMethod::WPA2Personal;
@@ -89,7 +84,7 @@ fn main() -> ! {
         }
     }
 
-    println!("{:?}", controller.get_capabilities());
+    println!("{:?}", controller.capabilities());
     println!("Wi-Fi connect: {:?}", controller.connect());
 
     // Wait to get connected
@@ -112,9 +107,18 @@ fn main() -> ! {
     // ANCHOR_END: wifi_connect
 
     // ANCHOR: ip
+    let mut socket_set_entries: [SocketStorage; 3] = Default::default();
+    let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
+    let mut dhcp_socket = smoltcp::socket::dhcpv4::Socket::new();
+    // we can set a hostname here (or add other DHCP options)
+    dhcp_socket.set_outgoing_options(&[DhcpOption {
+        kind: 12,
+        data: b"esp-wifi",
+    }]);
+    socket_set.add(dhcp_socket);
     // Wait for getting an ip address
     let now = || time::now().duration_since_epoch().to_millis();
-    let wifi_stack = WifiStack::new(iface, device, sockets, now);
+    let wifi_stack = Stack::new(iface, device, socket_set, now, rng.random());
     println!("Wait to get an ip address");
     loop {
         wifi_stack.work();

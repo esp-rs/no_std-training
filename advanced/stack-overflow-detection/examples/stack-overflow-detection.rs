@@ -2,6 +2,7 @@
 #![no_main]
 
 use core::cell::RefCell;
+use core::ptr::addr_of_mut;
 
 use critical_section::Mutex;
 use esp_backtrace as _;
@@ -55,8 +56,9 @@ fn install_stack_guard(mut da: DebugAssist<'static>, safe_area_size: u32) {
         static mut _stack_end: u32;
         static mut _stack_start: u32;
     }
-    let stack_low = unsafe { (&mut _stack_end as *mut _ as *mut u32) as u32 };
-    let stack_high = unsafe { (&mut _stack_start as *mut _ as *mut u32) as u32 };
+
+    let stack_low = unsafe { (addr_of_mut!(_stack_end) as *mut _ as *mut u32) as u32 };
+    let stack_high = unsafe { (addr_of_mut!(_stack_start) as *mut _ as *mut u32) as u32 };
     println!(
         "Safe stack {} bytes",
         stack_high - stack_low - safe_area_size
@@ -79,7 +81,7 @@ fn interrupt_handler() {
         let da = da.as_mut().unwrap();
 
         if da.is_region0_monitor_interrupt_set() {
-            let pc = da.get_region_monitor_pc();
+            let pc = da.region_monitor_pc();
             println!("PC = 0x{:x}", pc);
             da.clear_region0_monitor_interrupt();
             da.disable_region0_monitor();

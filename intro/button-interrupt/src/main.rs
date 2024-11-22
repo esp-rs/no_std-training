@@ -19,14 +19,14 @@ fn main() -> ! {
 
     println!("Hello world!");
 
-    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
+    let mut io = Io::new(peripherals.IO_MUX);
     // Set the interrupt handler for GPIO interrupts.
 
     // Set GPIO7 as an output, and set its state high initially.
-    let mut led = Output::new(io.pins.gpio7, Level::Low);
+    let mut led = Output::new(peripherals.GPIO7, Level::Low);
 
     // Set GPIO9 as an input
-    let mut button = Input::new(io.pins.gpio9, Pull::Up);
+    let mut button = Input::new(peripherals.GPIO9, Pull::Up);
 
     let delay = Delay::new();
     loop {}

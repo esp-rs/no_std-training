@@ -9,9 +9,11 @@ use esp_hal::{
     delay::Delay,
     dma::{Dma, DmaPriority, DmaRxBuf, DmaTxBuf},
     dma_buffers,
-    gpio::Io,
     prelude::*,
-    spi::{master::Spi, SpiMode},
+    spi::{
+        master::{Config, Spi},
+        SpiMode,
+    },
 };
 use esp_println::{print, println};
 
@@ -19,11 +21,10 @@ use esp_println::{print, println};
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
 
-    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
-    let sclk = io.pins.gpio0;
-    let miso = io.pins.gpio2;
-    let mosi = io.pins.gpio4;
-    let cs = io.pins.gpio5;
+    let sclk = peripherals.GPIO0;
+    let miso = peripherals.GPIO2;
+    let mosi = peripherals.GPIO4;
+    let cs = peripherals.GPIO5;
 
     // ANCHOR: init-dma
     // we need to create the DMA driver and get a channel
@@ -38,9 +39,19 @@ fn main() -> ! {
 
     // ANCHOR: configure-spi
     // we can call `.with_dma` on the SPI driver to make it use DMA
-    let mut spi = Spi::new(peripherals.SPI2, 100.kHz(), SpiMode::Mode0)
-        .with_pins(sclk, mosi, miso, cs)
-        .with_dma(dma_channel.configure(false, DmaPriority::Priority0));
+    let mut spi = Spi::new_with_config(
+        peripherals.SPI2,
+        Config {
+            frequency: 100.kHz(),
+            mode: SpiMode::Mode0,
+            ..Config::default()
+        },
+    )
+    .with_sck(sclk)
+    .with_mosi(mosi)
+    .with_miso(miso)
+    .with_cs(cs)
+    .with_dma(dma_channel.configure(false, DmaPriority::Priority0));
     // ANCHOR_END: configure-spi
 
     let delay = Delay::new();
@@ -54,7 +65,7 @@ fn main() -> ! {
         // `dma_transfer` will move the driver and the buffers into the
         // returned transfer.
         let transfer = spi
-            .dma_transfer(dma_rx_buf, dma_tx_buf)
+            .transfer(dma_rx_buf, dma_tx_buf)
             .map_err(|e| e.0)
             .unwrap();
         // ANCHOR_END: transfer
