@@ -6,10 +6,10 @@ use core::ptr::addr_of_mut;
 
 use critical_section::Mutex;
 use esp_backtrace as _;
-use esp_hal::{assist_debug::DebugAssist, prelude::*};
+use esp_hal::{assist_debug::DebugAssist, handler, interrupt::InterruptConfigurable, main, ram};
 use esp_println::println;
 
-#[entry]
+#[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
 

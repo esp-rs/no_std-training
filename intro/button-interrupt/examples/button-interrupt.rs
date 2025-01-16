@@ -7,13 +7,15 @@ use esp_backtrace as _;
 use esp_hal::{
     delay::Delay,
     gpio::{Event, Input, Io, Level, Output, Pull},
-    prelude::*,
+    handler,
+    interrupt::InterruptConfigurable,
+    main,
 };
 use esp_println::println;
 
 static BUTTON: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
 
-#[entry]
+#[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
 

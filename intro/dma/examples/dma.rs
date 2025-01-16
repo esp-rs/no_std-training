@@ -7,17 +7,17 @@
 use esp_backtrace as _;
 use esp_hal::{
     delay::Delay,
-    dma::{Dma, DmaPriority, DmaRxBuf, DmaTxBuf},
-    dma_buffers,
-    prelude::*,
+    dma::{DmaRxBuf, DmaTxBuf},
+    dma_buffers, main,
     spi::{
         master::{Config, Spi},
-        SpiMode,
+        Mode,
     },
+    time::RateExtU32,
 };
 use esp_println::{print, println};
 
-#[entry]
+#[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
 
@@ -28,8 +28,7 @@ fn main() -> ! {
 
     // ANCHOR: init-dma
     // we need to create the DMA driver and get a channel
-    let dma = Dma::new(peripherals.DMA);
-    let dma_channel = dma.channel0;
+    let dma_channel = peripherals.DMA_CH0;
 
     // DMA transfers need descriptors and buffers
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(32000);
@@ -39,19 +38,18 @@ fn main() -> ! {
 
     // ANCHOR: configure-spi
     // we can call `.with_dma` on the SPI driver to make it use DMA
-    let mut spi = Spi::new_with_config(
+    let mut spi = Spi::new(
         peripherals.SPI2,
-        Config {
-            frequency: 100.kHz(),
-            mode: SpiMode::Mode0,
-            ..Config::default()
-        },
+        Config::default()
+            .with_frequency(100.kHz())
+            .with_mode(Mode::_0),
     )
+    .unwrap()
     .with_sck(sclk)
     .with_mosi(mosi)
     .with_miso(miso)
     .with_cs(cs)
-    .with_dma(dma_channel.configure(false, DmaPriority::Priority0));
+    .with_dma(dma_channel);
     // ANCHOR_END: configure-spi
 
     let delay = Delay::new();
@@ -65,7 +63,7 @@ fn main() -> ! {
         // `dma_transfer` will move the driver and the buffers into the
         // returned transfer.
         let transfer = spi
-            .transfer(dma_rx_buf, dma_tx_buf)
+            .transfer(dma_rx_buf.len(), dma_rx_buf, dma_tx_buf.len(), dma_tx_buf)
             .map_err(|e| e.0)
             .unwrap();
         // ANCHOR_END: transfer

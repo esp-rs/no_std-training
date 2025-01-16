@@ -5,11 +5,11 @@ use esp_backtrace as _;
 use esp_hal::{
     delay::Delay,
     gpio::{Level, Output},
-    prelude::*,
+    main,
 };
 use esp_println::println;
 
-#[entry]
+#[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
 
@@ -26,6 +26,6 @@ fn main() -> ! {
 
     loop {
         led.toggle();
-        delay.delay_millis(500u32);
+        delay.delay_millis(500);
     }
 }

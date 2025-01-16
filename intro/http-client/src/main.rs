@@ -2,7 +2,7 @@
 #![no_main]
 
 use esp_hal::{
-    prelude::*,
+    main,
     rng::Rng,
     time::{self, Duration},
 };
@@ -30,13 +30,10 @@ use smoltcp::{
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
-#[entry]
+#[main]
 fn main() -> ! {
-    let peripherals = esp_hal::init({
-        let mut config = esp_hal::Config::default();
-        config.cpu_clock = CpuClock::max();
-        config
-    });
+    let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
+    let peripherals = esp_hal::init(config);
 
     esp_alloc::heap_allocator!(72 * 1024);
 
