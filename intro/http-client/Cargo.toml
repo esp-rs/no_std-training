@@ -16,31 +16,28 @@ opt-level = 3
 lto = "off"
 
 [dependencies]
-esp-alloc = "0.5.0"
-esp-hal = { version = "0.22.0", features = ["esp32c3"] }
-blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "1c581661d78e0cf0f17b936297179b993fb149d7" }
-esp-backtrace = { version = "0.14.2", features = [
+esp-alloc = "0.6.0"
+esp-hal = { version = "0.23.1", features = ["esp32c3", "unstable"] }
+blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "b3ecefc222d8806edd221f266999ca339c52d34e" }
+esp-backtrace = { version = "0.15.0", features = [
     "esp32c3",
     "panic-handler",
     "exception-handler",
     "println",
 ] }
-esp-println = { version = "0.12.0", features = ["esp32c3"] }
-esp-wifi = { version = "0.11.0", features = [
+esp-println = { version = "0.13.0", features = ["esp32c3"] }
+esp-wifi = { version = "0.12.0", features = [
     "esp32c3",
     "wifi",
     "utils",
 ] }
-smoltcp = { version = "0.11.0", default-features = false, features = [
-    "proto-igmp",
-    "proto-ipv4",
-    "socket-tcp",
-    "socket-icmp",
-    "socket-udp",
+smoltcp = { version = "0.12.0", default-features = false, features = [
     "medium-ethernet",
-    "proto-dhcpv4",
     "socket-raw",
-    "socket-dhcpv4",
 ] }
-embedded-io = "0.6.1"
+edge-dhcp = { version = "0.5.0" }
+edge-raw = { version = "0.5.0" }
+edge-nal = { version = "0.5.0" }
+edge-nal-embassy = { version = "0.5.0" }
+embedded-io         = { version = "0.6.1", default-features = false }
 heapless = { version = "0.8.0", default-features = false }

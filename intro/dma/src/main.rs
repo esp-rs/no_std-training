@@ -7,17 +7,17 @@
 use esp_backtrace as _;
 use esp_hal::{
     delay::Delay,
-    dma::{Dma, DmaPriority, DmaRxBuf, DmaTxBuf},
-    dma_buffers,
-    prelude::*,
+    dma::{DmaRxBuf, DmaTxBuf},
+    dma_buffers, main,
     spi::{
         master::{Config, Spi},
-        SpiMode,
+        Mode,
     },
+    time::RateExtU32,
 };
 use esp_println::{print, println};
 
-#[entry]
+#[main]
 fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
 

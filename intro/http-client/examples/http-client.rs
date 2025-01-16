@@ -1,19 +1,20 @@
 #![no_std]
 #![no_main]
 
-use esp_hal::{
-    prelude::*,
-    rng::Rng,
-    time::{self, Duration},
-};
-
 extern crate alloc;
-use esp_alloc as _;
-use esp_backtrace as _;
-use esp_println::{print, println};
+use core::net::Ipv4Addr;
 
 use blocking_network_stack::Stack;
 use embedded_io::*;
+use esp_alloc as _;
+use esp_backtrace as _;
+use esp_hal::{
+    clock::CpuClock,
+    main,
+    rng::Rng,
+    time::{self, Duration},
+};
+use esp_println::{print, println};
 use esp_wifi::{
     init,
     wifi::{
@@ -21,22 +22,18 @@ use esp_wifi::{
         Configuration, WifiError, WifiStaDevice,
     },
 };
-
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
-    wire::{DhcpOption, IpAddress, Ipv4Address},
+    wire::{DhcpOption, IpAddress},
 };
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
-#[entry]
+#[main]
 fn main() -> ! {
-    let peripherals = esp_hal::init({
-        let mut config = esp_hal::Config::default();
-        config.cpu_clock = CpuClock::max();
-        config
-    });
+    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
+    let peripherals = esp_hal::init(config);
 
     esp_alloc::heap_allocator!(72 * 1024);
 
@@ -118,13 +115,50 @@ fn main() -> ! {
     socket_set.add(dhcp_socket);
     // Wait for getting an ip address
     let now = || time::now().duration_since_epoch().to_millis();
-    let wifi_stack = Stack::new(iface, device, socket_set, now, rng.random());
+    let stack = Stack::new(iface, device, socket_set, now, rng.random());
+    let client_config = Configuration::Client(ClientConfiguration {
+        ssid: SSID.try_into().unwrap(),
+        password: PASSWORD.try_into().unwrap(),
+        ..Default::default()
+    });
+    let res = controller.set_configuration(&client_config);
+    println!("wifi_set_configuration returned {:?}", res);
+
+    controller.start().unwrap();
+    println!("is wifi started: {:?}", controller.is_started());
+
+    println!("Start Wifi Scan");
+    let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
+    if let Ok((res, _count)) = res {
+        for ap in res {
+            println!("{:?}", ap);
+        }
+    }
+
+    println!("{:?}", controller.capabilities());
+    println!("wifi_connect {:?}", controller.connect());
+
+    // wait to get connected
+    println!("Wait to get connected");
+    loop {
+        match controller.is_connected() {
+            Ok(true) => break,
+            Ok(false) => {}
+            Err(err) => {
+                println!("{:?}", err);
+                loop {}
+            }
+        }
+    }
+    println!("{:?}", controller.is_connected());
+
+    // wait for getting an ip address
     println!("Wait to get an ip address");
     loop {
-        wifi_stack.work();
+        stack.work();
 
-        if wifi_stack.is_iface_up() {
-            println!("got ip {:?}", wifi_stack.get_ip_info());
+        if stack.is_iface_up() {
+            println!("got ip {:?}", stack.get_ip_info());
             break;
         }
     }
@@ -134,14 +168,14 @@ fn main() -> ! {
 
     let mut rx_buffer = [0u8; 1536];
     let mut tx_buffer = [0u8; 1536];
-    let mut socket = wifi_stack.get_socket(&mut rx_buffer, &mut tx_buffer);
+    let mut socket = stack.get_socket(&mut rx_buffer, &mut tx_buffer);
 
     loop {
         println!("Making HTTP request");
         socket.work();
 
         socket
-            .open(IpAddress::Ipv4(Ipv4Address::new(142, 250, 185, 115)), 80)
+            .open(IpAddress::Ipv4(Ipv4Addr::new(142, 250, 185, 115)), 80)
             .unwrap();
 
         socket

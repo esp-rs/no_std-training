@@ -2,10 +2,10 @@
 #![no_main]
 
 use esp_backtrace as _;
-use esp_hal::prelude::*;
+use esp_hal::main;
 use esp_println::println;
 
-#[entry]
+#[main]
 fn main() -> ! {
     esp_hal::init(esp_hal::Config::default());
 

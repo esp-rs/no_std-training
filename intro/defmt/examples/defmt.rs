@@ -5,9 +5,9 @@
 use esp_backtrace as _;
 use esp_println as _;
 // ANCHOR_END: println_include
-use esp_hal::{delay::Delay, prelude::*};
+use esp_hal::{delay::Delay, main};
 
-#[entry]
+#[main]
 fn main() -> ! {
     esp_hal::init(esp_hal::Config::default());
     let delay = Delay::new();

@@ -3,9 +3,9 @@
 
 //  Build the `esp_println` and `esp_backtrace` libs
 
-use esp_hal::{delay::Delay, prelude::*};
+use esp_hal::{delay::Delay, main};
 
-#[entry]
+#[main]
 fn main() -> ! {
     esp_hal::init(esp_hal::Config::default());
     let delay = Delay::new();
