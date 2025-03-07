@@ -17,10 +17,7 @@ use esp_hal::{
 use esp_println::{print, println};
 use esp_wifi::{
     init,
-    wifi::{
-        utils::create_network_interface, AccessPointInfo, AuthMethod, ClientConfiguration,
-        Configuration, WifiError, WifiStaDevice,
-    },
+    wifi::{AccessPointInfo, AuthMethod, ClientConfiguration, Configuration, WifiError},
 };
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
@@ -35,21 +32,39 @@ fn main() -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    esp_alloc::heap_allocator!(72 * 1024);
+    esp_alloc::heap_allocator!(size: 72 * 1024);
 
-    // Initialize the timers used for Wifi
+    // Initialize the timer, rng and Wifi controller
     // ANCHOR: wifi_init
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
     let mut rng = Rng::new(peripherals.RNG);
-    let init = init(timg0.timer0, rng.clone(), peripherals.RADIO_CLK).unwrap();
+    let esp_wifi_ctrl = init(timg0.timer0, rng.clone(), peripherals.RADIO_CLK).unwrap();
     // ANCHOR_END: wifi_init
 
     // Configure Wifi
     // ANCHOR: wifi_config
-    let mut wifi = peripherals.WIFI;
-    let (iface, device, mut controller) =
-        create_network_interface(&init, &mut wifi, WifiStaDevice).unwrap();
+    let (mut controller, interfaces) =
+        esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
+    let mut device = interfaces.sta;
+    let iface = create_interface(&mut device);
     // ANCHOR_END: wifi_config
+
+    let mut socket_set_entries: [SocketStorage; 3] = Default::default();
+    let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
+    let mut dhcp_socket = smoltcp::socket::dhcpv4::Socket::new();
+    // we can set a hostname here (or add other DHCP options)
+    dhcp_socket.set_outgoing_options(&[DhcpOption {
+        kind: 12,
+        data: b"esp-wifi",
+    }]);
+    socket_set.add(dhcp_socket);
+    // Wait for getting an ip address
+    let now = || time::Instant::now().duration_since_epoch().as_millis();
+    let stack = Stack::new(iface, device, socket_set, now, rng.random());
+
+    controller
+        .set_power_saving(esp_wifi::config::PowerSaveMode::None)
+        .unwrap();
 
     let mut auth_method = AuthMethod::WPA2Personal;
     if PASSWORD.is_empty() {
@@ -104,18 +119,6 @@ fn main() -> ! {
     // ANCHOR_END: wifi_connect
 
     // ANCHOR: ip
-    let mut socket_set_entries: [SocketStorage; 3] = Default::default();
-    let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
-    let mut dhcp_socket = smoltcp::socket::dhcpv4::Socket::new();
-    // we can set a hostname here (or add other DHCP options)
-    dhcp_socket.set_outgoing_options(&[DhcpOption {
-        kind: 12,
-        data: b"esp-wifi",
-    }]);
-    socket_set.add(dhcp_socket);
-    // Wait for getting an ip address
-    let now = || time::now().duration_since_epoch().to_millis();
-    let stack = Stack::new(iface, device, socket_set, now, rng.random());
     let client_config = Configuration::Client(ClientConfiguration {
         ssid: SSID.try_into().unwrap(),
         password: PASSWORD.try_into().unwrap(),
@@ -184,13 +187,13 @@ fn main() -> ! {
         socket.flush().unwrap();
 
         // ANCHOR: reponse
-        let deadline = time::now() + Duration::secs(20);
+        let deadline = time::Instant::now() + Duration::from_secs(20);
         let mut buffer = [0u8; 512];
         while let Ok(len) = socket.read(&mut buffer) {
             let to_print = unsafe { core::str::from_utf8_unchecked(&buffer[..len]) };
             print!("{}", to_print);
 
-            if time::now() > deadline {
+            if time::Instant::now() < deadline {
                 println!("Timeout");
                 break;
             }
@@ -201,10 +204,31 @@ fn main() -> ! {
         // ANCHOR: socket_close
         socket.disconnect();
 
-        let deadline = time::now() + Duration::secs(5);
-        while time::now() < deadline {
+        let deadline = time::Instant::now() + Duration::from_secs(5);
+        while time::Instant::now() < deadline {
             socket.work();
         }
         // ANCHOR_END: socket_close
     }
+}
+
+// some smoltcp boilerplate
+fn timestamp() -> smoltcp::time::Instant {
+    smoltcp::time::Instant::from_micros(
+        esp_hal::time::Instant::now()
+            .duration_since_epoch()
+            .as_micros() as i64,
+    )
+}
+
+pub fn create_interface(device: &mut esp_wifi::wifi::WifiDevice) -> smoltcp::iface::Interface {
+    // users could create multiple instances but since they only have one WifiDevice
+    // they probably can't do anything bad with that
+    smoltcp::iface::Interface::new(
+        smoltcp::iface::Config::new(smoltcp::wire::HardwareAddress::Ethernet(
+            smoltcp::wire::EthernetAddress::from_bytes(&device.mac_address()),
+        )),
+        device,
+        timestamp(),
+    )
 }
