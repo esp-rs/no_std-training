@@ -13,7 +13,7 @@ use esp_hal::{
         master::{Config, Spi},
         Mode,
     },
-    time::RateExtU32,
+    time::Rate,
 };
 use esp_println::{print, println};
 
@@ -26,14 +26,13 @@ fn main() -> ! {
     let mosi = peripherals.GPIO4;
     let cs = peripherals.GPIO5;
 
-    let mut spi = Spi::new_with_config(
+    let mut spi = Spi::new(
         peripherals.SPI2,
-        Config {
-            frequency: 100.kHz(),
-            mode: SpiMode::Mode0,
-            ..Config::default()
-        },
+        Config::default()
+            .with_frequency(Rate::from_khz(100))
+            .with_mode(Mode::_0),
     )
+    .unwrap()
     .with_sck(sclk)
     .with_mosi(mosi)
     .with_miso(miso)
