@@ -38,6 +38,11 @@ We can also test for the current stack usage by temporarily increasing the safe 
 
 ## Setup
 
+✅ Install the `nightly` channel of Rust:
+```shell
+rustup toolchain install nightly --component rust-src --target riscv32imc-unknown-none-elf
+```
+
 ✅ Go to `advanced/stack-overflow-detection` directory.
 
 ✅ Open the prepared project skeleton in `advanced/stack-overflow-detection`.
