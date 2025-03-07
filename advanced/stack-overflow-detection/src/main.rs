@@ -6,7 +6,7 @@ use core::ptr::addr_of_mut;
 
 use critical_section::Mutex;
 use esp_backtrace as _;
-use esp_hal::{assist_debug::DebugAssist, handler, interrupt::InterruptConfigurable, main, ram};
+use esp_hal::{assist_debug::DebugAssist, handler, main, ram};
 use esp_println::println;
 
 #[main]
@@ -14,7 +14,7 @@ fn main() -> ! {
     let peripherals = esp_hal::init(esp_hal::Config::default());
 
     // get the debug assist driver
-    let da = DebugAssist::new(peripherals.ASSIST_DEBUG);
+    let mut da = DebugAssist::new(peripherals.ASSIST_DEBUG);
     da.set_interrupt_handler(interrupt_handler);
 
     boom();

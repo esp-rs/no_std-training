@@ -1,30 +1,24 @@
 #![no_std]
 #![no_main]
 
+use blocking_network_stack::Stack;
+use embedded_io::*;
+use esp_alloc as _;
+use esp_backtrace as _;
 use esp_hal::{
+    clock::CpuClock,
     main,
     rng::Rng,
     time::{self, Duration},
 };
-
-extern crate alloc;
-use esp_alloc as _;
-use esp_backtrace as _;
 use esp_println::{print, println};
-
-use blocking_network_stack::Stack;
-use embedded_io::*;
 use esp_wifi::{
     init,
-    wifi::{
-        utils::create_network_interface, AccessPointInfo, AuthMethod, ClientConfiguration,
-        Configuration, WifiError, WifiStaDevice,
-    },
+    wifi::{AccessPointInfo, AuthMethod, ClientConfiguration, Configuration, WifiError},
 };
-
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
-    wire::{DhcpOption, IpAddress, Ipv4Address},
+    wire::{DhcpOption, IpAddress},
 };
 
 const SSID: &str = env!("SSID");
@@ -35,19 +29,23 @@ fn main() -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    esp_alloc::heap_allocator!(72 * 1024);
+    esp_alloc::heap_allocator!(size: 72 * 1024);
 
-    // Create a timer and initialize the Wi-Fi
+    // Initialize the timer, rng and Wifi controller
     // let timg0 =
-    // let init =
+    // let mut rng =
+    // let esp_wifi_ctrl =
 
     // Configure Wifi
-    let wifi = peripherals.WIFI;
+    let (mut controller, interfaces) =
+        esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
+    let mut device = interfaces.sta;
+    let iface = create_interface(&mut device);
+
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
     let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
     let mut dhcp_socket = smoltcp::socket::dhcpv4::Socket::new();
-    let (iface, device, mut controller) =
-        create_network_interface(&init, &mut wifi, WifiStaDevice).unwrap();
+
     // Create a Client with your Wi-Fi credentials and default configuration.
     // let client_config = Configuration::Client(.....);
     let res = controller.set_configuration(&client_config);
@@ -65,7 +63,7 @@ fn main() -> ! {
         }
     }
 
-    println!("{:?}", controller.get_capabilities());
+    println!("{:?}", controller.capabilities());
     println!("Wi-Fi connect: {:?}", controller.connect());
 
     // Wait to get connected
@@ -87,14 +85,14 @@ fn main() -> ! {
     println!("{:?}", controller.is_connected());
 
     // Wait for getting an ip address
-    let now = || time::now().duration_since_epoch().to_millis();
-    let wifi_stack = WifiStack::new(iface, device, sockets, now);
+    let now = || time::Instant::now().duration_since_epoch().as_millis();
+    let stack = Stack::new(iface, device, socket_set, now, rng.random());
     println!("Wait to get an ip address");
     loop {
-        wifi_stack.work();
+        stack.work();
 
-        if wifi_stack.is_iface_up() {
-            println!("got ip {:?}", wifi_stack.get_ip_info());
+        if stack.is_iface_up() {
+            println!("got ip {:?}", stack.get_ip_info());
             break;
         }
     }
@@ -103,7 +101,7 @@ fn main() -> ! {
 
     let mut rx_buffer = [0u8; 1536];
     let mut tx_buffer = [0u8; 1536];
-    let mut socket = wifi_stack.get_socket(&mut rx_buffer, &mut tx_buffer);
+    let mut socket = stack.get_socket(&mut rx_buffer, &mut tx_buffer);
 
     loop {
         println!("Making HTTP request");
@@ -117,13 +115,13 @@ fn main() -> ! {
         // socket...
         // socket...
 
-        let deadline = time::now() + Duration::secs(20);
+        let deadline = time::Instant::now() + Duration::from_secs(20);
         let mut buffer = [0u8; 512];
         while let Ok(len) = socket.read(&mut buffer) {
             let to_print = unsafe { core::str::from_utf8_unchecked(&buffer[..len]) };
             print!("{}", to_print);
 
-            if time::now() > deadline {
+            if time::Instant::now() < deadline {
                 println!("Timeout");
                 break;
             }
@@ -132,9 +130,30 @@ fn main() -> ! {
 
         socket.disconnect();
 
-        let deadline = time::now() + Duration::secs(5);
-        while time::now() < deadline {
+        let deadline = time::Instant::now() + Duration::from_secs(5);
+        while time::Instant::now() < deadline {
             socket.work();
         }
     }
+}
+
+// some smoltcp boilerplate
+fn timestamp() -> smoltcp::time::Instant {
+    smoltcp::time::Instant::from_micros(
+        esp_hal::time::Instant::now()
+            .duration_since_epoch()
+            .as_micros() as i64,
+    )
+}
+
+pub fn create_interface(device: &mut esp_wifi::wifi::WifiDevice) -> smoltcp::iface::Interface {
+    // users could create multiple instances but since they only have one WifiDevice
+    // they probably can't do anything bad with that
+    smoltcp::iface::Interface::new(
+        smoltcp::iface::Config::new(smoltcp::wire::HardwareAddress::Ethernet(
+            smoltcp::wire::EthernetAddress::from_bytes(&device.mac_address()),
+        )),
+        device,
+        timestamp(),
+    )
 }

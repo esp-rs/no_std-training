@@ -3,7 +3,7 @@
 
 use esp_backtrace as _;
 use esp_hal::{
-    gpio::{Input, Level, Output, Pull},
+    gpio::{Input, InputConfig, Level, Output, OutputConfig},
     main,
 };
 use esp_println::println;
@@ -15,8 +15,8 @@ fn main() -> ! {
     println!("Hello world!");
 
     // Set GPIO7 as an output, and set its state high initially.
-    let mut led = Output::new(peripherals.GPIO7, Level::Low);
-    let button = Input::new(peripherals.GPIO9, Pull::Up);
+    let mut led = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+    let button = Input::new(peripherals.GPIO9, InputConfig::default());
 
     // Check the button state and set the LED state accordingly.
     loop {

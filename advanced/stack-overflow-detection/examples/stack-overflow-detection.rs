@@ -6,7 +6,7 @@ use core::ptr::addr_of_mut;
 
 use critical_section::Mutex;
 use esp_backtrace as _;
-use esp_hal::{assist_debug::DebugAssist, handler, interrupt::InterruptConfigurable, main, ram};
+use esp_hal::{assist_debug::DebugAssist, handler, main, ram};
 use esp_println::println;
 
 #[main]
@@ -57,7 +57,9 @@ fn install_stack_guard(mut da: DebugAssist<'static>, safe_area_size: u32) {
         static mut _stack_start: u32;
     }
 
+    #[allow(unused_unsafe)]
     let stack_low = unsafe { (addr_of_mut!(_stack_end) as *mut _ as *mut u32) as u32 };
+    #[allow(unused_unsafe)]
     let stack_high = unsafe { (addr_of_mut!(_stack_start) as *mut _ as *mut u32) as u32 };
     println!(
         "Safe stack {} bytes",

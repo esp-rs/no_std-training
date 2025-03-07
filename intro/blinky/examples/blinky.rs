@@ -4,7 +4,7 @@
 use esp_backtrace as _;
 use esp_hal::{
     delay::Delay,
-    gpio::{Level, Output},
+    gpio::{Level, Output, OutputConfig},
     main,
 };
 use esp_println::println;
@@ -16,7 +16,7 @@ fn main() -> ! {
     println!("Hello world!");
 
     // Set GPIO7 as an output, and set its state high initially.
-    let mut led = Output::new(peripherals.GPIO7, Level::Low);
+    let mut led = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
 
     led.set_high();
 

@@ -3,7 +3,7 @@
 
 use esp_backtrace as _;
 use esp_hal::{
-    gpio::{Input, Level, Output, Pull},
+    gpio::{Input, InputConfig, Level, Output, OutputConfig},
     main,
 };
 use esp_println::println;
