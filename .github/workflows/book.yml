@@ -44,7 +44,7 @@ jobs:
           curl -Lo- https://github.com/rust-lang/mdBook/releases/download/v${{ env.MDBOOK_VERSION }}/mdbook-v${{ env.MDBOOK_VERSION }}-x86_64-unknown-linux-gnu.tar.gz | tar -C /tmp/mdbook -xzv
 
       - name: Build the contents of the book
-        run: /tmp/mdbook/mdbook build book/ -d /tmp/book
+        run: /tmp/mdbook/mdbook build book/ -d /tmp/output
 
       - name: Check links
         run: linkchecker book
@@ -57,6 +57,6 @@ jobs:
           username: ${{ secrets.PRODUCTION_USERNAME }}
           key: ${{ secrets.PRODUCTION_KEY }}
           target: ${{ secrets.PRODUCTION_TARGET }}
-          source: "/tmp/book/"
-          strip_components: 1 # remove the book prefix, it's already being placed in /projects/rust/book/no_std-training
+          source: "/tmp/output"
+          strip_components: 1 # remove the prefix, it's already being placed in /projects/rust/no_std-training
           overwrite: true
