@@ -17,7 +17,7 @@ use esp_hal::{
 use esp_println::{print, println};
 use esp_wifi::{
     init,
-    wifi::{AccessPointInfo, AuthMethod, ClientConfiguration, Configuration, WifiError},
+    wifi::{AuthMethod, ClientConfiguration, Configuration},
 };
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
@@ -26,6 +26,8 @@ use smoltcp::{
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
+
+esp_bootloader_esp_idf::esp_app_desc!();
 
 #[main]
 fn main() -> ! {
@@ -89,11 +91,9 @@ fn main() -> ! {
     println!("Is wifi started: {:?}", controller.is_started());
 
     println!("Start Wifi Scan");
-    let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
-    if let Ok((res, _count)) = res {
-        for ap in res {
-            println!("{:?}", ap);
-        }
+    let res = controller.scan_n(10).unwrap();
+    for ap in res {
+        println!("{:?}", ap);
     }
 
     println!("{:?}", controller.capabilities());
@@ -119,42 +119,6 @@ fn main() -> ! {
     // ANCHOR_END: wifi_connect
 
     // ANCHOR: ip
-    let client_config = Configuration::Client(ClientConfiguration {
-        ssid: SSID.try_into().unwrap(),
-        password: PASSWORD.try_into().unwrap(),
-        ..Default::default()
-    });
-    let res = controller.set_configuration(&client_config);
-    println!("wifi_set_configuration returned {:?}", res);
-
-    controller.start().unwrap();
-    println!("is wifi started: {:?}", controller.is_started());
-
-    println!("Start Wifi Scan");
-    let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
-    if let Ok((res, _count)) = res {
-        for ap in res {
-            println!("{:?}", ap);
-        }
-    }
-
-    println!("{:?}", controller.capabilities());
-    println!("wifi_connect {:?}", controller.connect());
-
-    // wait to get connected
-    println!("Wait to get connected");
-    loop {
-        match controller.is_connected() {
-            Ok(true) => break,
-            Ok(false) => {}
-            Err(err) => {
-                println!("{:?}", err);
-                loop {}
-            }
-        }
-    }
-    println!("{:?}", controller.is_connected());
-
     // wait for getting an ip address
     println!("Wait to get an ip address");
     loop {

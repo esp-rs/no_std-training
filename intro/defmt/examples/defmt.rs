@@ -7,6 +7,8 @@ use esp_println as _;
 // ANCHOR_END: println_include
 use esp_hal::{delay::Delay, main};
 
+esp_bootloader_esp_idf::esp_app_desc!();
+
 #[main]
 fn main() -> ! {
     esp_hal::init(esp_hal::Config::default());
