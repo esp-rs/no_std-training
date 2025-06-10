@@ -57,6 +57,6 @@ jobs:
           username: ${{ secrets.PRODUCTION_USERNAME }}
           key: ${{ secrets.PRODUCTION_KEY }}
           target: ${{ secrets.PRODUCTION_TARGET }}
-          source: "book/"
-          strip_components: 1 # remove the book prefix, it's already being placed in /projects/rust/book
+          source: "/tmp/book/"
+          strip_components: 1 # remove the book prefix, it's already being placed in /projects/rust/book/no_std-training
           overwrite: true
