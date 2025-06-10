@@ -12,6 +12,12 @@ on:
       - "book/**"
       - ".github/workflows/book.yml"
       - "**book**"
+  workflow_dispatch:
+    paths:
+      - "book/"
+      - "book/**"
+      - ".github/workflows/book.yml"
+      - "**book**"
 
 env:
   MDBOOK_VERSION: "0.4.28"
@@ -42,28 +48,15 @@ jobs:
 
       - name: Check links
         run: linkchecker book
-
-      - name: Upload GitHub Pages content
-        uses: actions/upload-pages-artifact@v3
+      
+      - name: Deploy
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+        uses: appleboy/scp-action@v0.1.7
         with:
-          path: /tmp/book
-
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-latest
-
-    needs: [build]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-
-    steps:
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
-        id: deployment
+          host: docs.espressif.com
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_KEY }}
+          target: ${{ secrets.PRODUCTION_TARGET }}
+          source: "book/"
+          strip_components: 1 # remove the book prefix, it's already being placed in /projects/rust/book
+          overwrite: true
