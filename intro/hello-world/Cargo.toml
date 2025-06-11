@@ -6,16 +6,16 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-esp-backtrace = { version = "0.15.1", features = [
+esp-backtrace = { version = "0.16.0", features = [
     "esp32c3",
     "exception-handler",
     "panic-handler",
     "println",
 ]}
-
-esp-hal = { version = "1.0.0-beta.0", features = [
+esp-bootloader-esp-idf = "0.1.0"
+esp-hal = { version = "1.0.0-beta.1", features = [
     "esp32c3",
     "unstable",
 ] }
-esp-println = { version = "0.13.1", features = ["esp32c3", "log"] }
-log = { version = "0.4.26" }
+esp-println = { version = "0.14.0", features = ["esp32c3", "log-04"] }
+log = { version = "0.4.27" }

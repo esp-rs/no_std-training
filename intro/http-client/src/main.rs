@@ -24,6 +24,8 @@ use smoltcp::{
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
+esp_bootloader_esp_idf::esp_app_desc!();
+
 #[main]
 fn main() -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
@@ -121,7 +123,7 @@ fn main() -> ! {
             let to_print = unsafe { core::str::from_utf8_unchecked(&buffer[..len]) };
             print!("{}", to_print);
 
-            if time::Instant::now() < deadline {
+            if time::Instant::now() > deadline {
                 println!("Timeout");
                 break;
             }
