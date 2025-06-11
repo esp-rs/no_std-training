@@ -157,7 +157,7 @@ fn main() -> ! {
             let to_print = unsafe { core::str::from_utf8_unchecked(&buffer[..len]) };
             print!("{}", to_print);
 
-            if time::Instant::now() < deadline {
+            if time::Instant::now() > deadline {
                 println!("Timeout");
                 break;
             }
