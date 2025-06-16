@@ -51,7 +51,7 @@ jobs:
       
       - name: Deploy
         if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: docs.espressif.com
           username: ${{ secrets.PRODUCTION_USERNAME }}
