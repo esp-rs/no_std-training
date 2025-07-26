@@ -1,5 +1,5 @@
 // To easily test this you can connect GPIO2 and GPIO4
-// This way we will receive was we send. (loopback)
+// This way we will receive what we send. (loopback)
 
 #![no_std]
 #![no_main]
