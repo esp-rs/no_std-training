@@ -1,7 +1,11 @@
 # HTTP Client
 Next, we'll write a small client that retrieves data over an HTTP connection to the internet.
 
-For demonstration purposes we implement the http client ourselves. Usually you want to use e.g. [`reqwless`](https://crates.io/crates/reqwless) or [`edge-net`](https://crates.io/crates/edge-net)
+For demonstration purposes we implement the http client ourselves. Usually you want to use e.g. [`reqwless`](https://crates.io/crates/reqwless) or [`edge-net`](https://crates.io/crates/edge-net).
+
+For simplicity we use a hardcoded IP address - usually you want to do a DNS lookup instead, which is out of scope of this exercise.
+
+If you try to resolve the hostname yourself, you might notice you get a different IP address. That's because the IP address is from an IP-range assigned to a load-balancer.
 
 Before jumping to the exercise, let's explore how Wi-Fi works in `no_std` Rust for Espressif devices.
 
