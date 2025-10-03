@@ -1,21 +1,23 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+use core::net::Ipv4Addr;
+
 use blocking_network_stack::Stack;
 use embedded_io::*;
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
     clock::CpuClock,
-    main,
+    interrupt::software::SoftwareInterruptControl,
+    main, ram,
     rng::Rng,
     time::{self, Duration},
 };
 use esp_println::{print, println};
-use esp_wifi::{
-    init,
-    wifi::{AccessPointInfo, AuthMethod, ClientConfiguration, Configuration, WifiError},
-};
+use esp_radio::wifi::{ClientConfig, Config, ScanConfig};
+
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
     wire::{DhcpOption, IpAddress},
@@ -28,29 +30,42 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[main]
 fn main() -> ! {
-    let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
+    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    esp_alloc::heap_allocator!(size: 72 * 1024);
+    esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
+    esp_alloc::heap_allocator!(size: 36 * 1024);
 
     // Initialize the timer, rng and Wifi controller
     // let timg0 =
-    // let mut rng =
-    // let esp_wifi_ctrl =
+    // let sw_int =
+    // esp_rtos::start(
+    //     ...
+    // let esp_radio_ctrl =
 
     // Configure Wifi
     let (mut controller, interfaces) =
-        esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
+        esp_radio::wifi::new(&esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
     let mut device = interfaces.sta;
     let iface = create_interface(&mut device);
 
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
     let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
     let mut dhcp_socket = smoltcp::socket::dhcpv4::Socket::new();
+    // we can set a hostname here (or add other DHCP options)
+    dhcp_socket.set_outgoing_options(&[DhcpOption {
+        kind: 12,
+        data: b"esp-radio",
+    }]);
+    socket_set.add(dhcp_socket);
+    // Wait for getting an ip address
+    let rng = Rng::new();
+    let now = || time::Instant::now().duration_since_epoch().as_millis();
+    let stack = Stack::new(iface, device, socket_set, now, rng.random());
 
     // Create a Client with your Wi-Fi credentials and default configuration.
-    // let client_config = Configuration::Client(.....);
-    let res = controller.set_configuration(&client_config);
+    // let client_config = Config::Client(...);
+    let res = controller.set_conf(&client_config);
     println!("Wi-Fi set_configuration returned {:?}", res);
 
     // Start Wi-Fi controller, scan the available networks.
@@ -58,12 +73,12 @@ fn main() -> ! {
     println!("Is wifi started: {:?}", controller.is_started());
 
     println!("Start Wifi Scan");
-    let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
-    if let Ok((res, _count)) = res {
-        for ap in res {
-            println!("{:?}", ap);
-        }
+    let scan_config = ScanConfig::default().with_max(10);
+    let res = controller.scan_with_config_sync(scan_config).unwrap();
+    for ap in res {
+        println!("{:?}", ap);
     }
+
 
     println!("{:?}", controller.capabilities());
     println!("Wi-Fi connect: {:?}", controller.connect());
@@ -71,13 +86,9 @@ fn main() -> ! {
     // Wait to get connected
     println!("Wait to get connected");
     loop {
-        let res = controller.is_connected();
-        match res {
-            Ok(connected) => {
-                if connected {
-                    break;
-                }
-            }
+        match controller.is_connected() {
+            Ok(true) => break,
+            Ok(false) => {}
             Err(err) => {
                 println!("{:?}", err);
                 loop {}
@@ -87,8 +98,6 @@ fn main() -> ! {
     println!("{:?}", controller.is_connected());
 
     // Wait for getting an ip address
-    let now = || time::Instant::now().duration_since_epoch().as_millis();
-    let stack = Stack::new(iface, device, socket_set, now, rng.random());
     println!("Wait to get an ip address");
     loop {
         stack.work();
@@ -148,7 +157,7 @@ fn timestamp() -> smoltcp::time::Instant {
     )
 }
 
-pub fn create_interface(device: &mut esp_wifi::wifi::WifiDevice) -> smoltcp::iface::Interface {
+pub fn create_interface(device: &mut esp_radio::wifi::WifiDevice) -> smoltcp::iface::Interface {
     // users could create multiple instances but since they only have one WifiDevice
     // they probably can't do anything bad with that
     smoltcp::iface::Interface::new(
