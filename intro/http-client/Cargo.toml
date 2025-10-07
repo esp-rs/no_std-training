@@ -16,21 +16,21 @@ opt-level = 3
 lto = "off"
 
 [dependencies]
-esp-alloc = { git = "https://github.com/esp-rs/esp-hal", package = "esp-alloc", rev = "c742182" }
-esp-hal = { git = "https://github.com/esp-rs/esp-hal", package = "esp-hal", rev = "c742182", features = [
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", package = "esp-alloc", rev = "452c042" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", package = "esp-hal", rev = "452c042", features = [
     "esp32c3",
     "unstable",
 ] }
 blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "b3ecefc222d8806edd221f266999ca339c52d34e" }
-esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", package = "esp-backtrace", rev = "c742182", features = [
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", package = "esp-backtrace", rev = "452c042", features = [
     "esp32c3",
     "panic-handler",
     "println",
 ]}
-esp-bootloader-esp-idf = {git = "https://github.com/esp-rs/esp-hal", package = "esp-bootloader-esp-idf", rev = "c742182", features = ["esp32c3"]}
-esp-println = { git = "https://github.com/esp-rs/esp-hal", package = "esp-println", rev = "c742182", features = ["esp32c3", "log-04"] }
-esp-rtos = { git = "https://github.com/esp-rs/esp-hal", package = "esp-rtos", rev = "c742182", features = ["esp32c3", "log-04"] }
-esp-radio = { git = "https://github.com/esp-rs/esp-hal", package = "esp-radio", rev = "c742182", features = [
+esp-bootloader-esp-idf = {git = "https://github.com/esp-rs/esp-hal", package = "esp-bootloader-esp-idf", rev = "452c042", features = ["esp32c3"]}
+esp-println = { git = "https://github.com/esp-rs/esp-hal", package = "esp-println", rev = "452c042", features = ["esp32c3", "log-04"] }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", package = "esp-rtos", rev = "452c042", features = ["esp32c3", "log-04"] }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", package = "esp-radio", rev = "452c042", features = [
     "esp32c3",
     "wifi",
     "smoltcp",

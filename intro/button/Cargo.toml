@@ -6,14 +6,14 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", package = "esp-backtrace", rev = "c742182", features = [
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", package = "esp-backtrace", rev = "452c042", features = [
     "esp32c3",
     "panic-handler",
     "println",
 ]}
-esp-bootloader-esp-idf = {git = "https://github.com/esp-rs/esp-hal", package = "esp-bootloader-esp-idf", rev = "c742182", features = ["esp32c3"]}
-esp-hal = { git = "https://github.com/esp-rs/esp-hal", package = "esp-hal", rev = "c742182", features = [
+esp-bootloader-esp-idf = {git = "https://github.com/esp-rs/esp-hal", package = "esp-bootloader-esp-idf", rev = "452c042", features = ["esp32c3"]}
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", package = "esp-hal", rev = "452c042", features = [
     "esp32c3",
     "unstable",
 ] }
-esp-println = { git = "https://github.com/esp-rs/esp-hal", package = "esp-println", rev = "c742182", features = ["esp32c3", "log-04"] }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", package = "esp-println", rev = "452c042", features = ["esp32c3", "log-04"] }
