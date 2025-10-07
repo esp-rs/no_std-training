@@ -1,9 +1,0 @@
-[wokwi]
-version = 1
-# Exercise
-# firmware = "target/riscv32imc-unknown-none-elf/release/stack_overflow_detection"
-# elf = "target/riscv32imc-unknown-none-elf/release/stack_overflow_detection"
-
-# Solution
-firmware = 'target/riscv32imc-unknown-none-elf/release/examples/stack-overflow-detection'
-elf = 'target/riscv32imc-unknown-none-elf/release/examples/stack-overflow-detection'

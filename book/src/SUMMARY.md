@@ -14,5 +14,3 @@
   - [DMA](./03_5_dma_spi.md)
   - [HTTP Client](./03_6_http_client.md)
   - [Using `defmt`](./03_7_defmt.md)
-- [Advanced level examples](./04_0_intro_advanced_examples.md)
-  - [Stack overflow protection with Debug Assist](./04_1_stack_overflow_protection.md)
