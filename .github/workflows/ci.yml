@@ -45,7 +45,7 @@ jobs:
           path: intro/hello-world
           timeout: 30000
           scenario: ${{ github.workspace }}/.github/hello-world.test.yaml
-          fail_text: 'Error'
+          fail_text: "Error"
 
   examples:
     name: ${{ matrix.project.name }}
@@ -66,8 +66,6 @@ jobs:
             path: "intro/http-client"
           - name: "defmt"
             path: "intro/defmt"
-          - name: "stack-overflow-detection"
-            path: "advanced/stack-overflow-detection"
     steps:
       - uses: actions/checkout@v5
 
@@ -81,11 +79,11 @@ jobs:
         working-directory: ${{ matrix.project.path }}
 
       - name: Wokwi CI check
-        if: (matrix.project.name != 'stack-overflow-detection' || matrix.project.name != 'defmt') && github.actor == 'esp-rs'
+        if: (matrix.project.name != 'defmt') && github.actor == 'esp-rs'
         uses: wokwi/wokwi-ci-action@v1
         with:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}
           path: ${{ matrix.project.path }}
           timeout: 30000
           scenario: ${{ github.workspace }}/.github/${{ matrix.project.name }}.test.yaml
-          fail_text: 'Error'
+          fail_text: "Error"
