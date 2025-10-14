@@ -16,7 +16,7 @@ use esp_hal::{
     time::{self, Duration},
 };
 use esp_println::{print, println};
-use esp_radio::wifi::{ClientConfig, Config, ScanConfig};
+use esp_radio::wifi::{ClientConfig, ModeConfig, ScanConfig};
 
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
@@ -64,7 +64,7 @@ fn main() -> ! {
     let stack = Stack::new(iface, device, socket_set, now, rng.random());
 
     // Create a Client with your Wi-Fi credentials and default configuration.
-    // let client_config = Config::Client(...);
+    // let client_config = ModeConfig::Client(...);
     let res = controller.set_conf(&client_config);
     println!("Wi-Fi set_configuration returned {:?}", res);
 
@@ -74,11 +74,10 @@ fn main() -> ! {
 
     println!("Start Wifi Scan");
     let scan_config = ScanConfig::default().with_max(10);
-    let res = controller.scan_with_config_sync(scan_config).unwrap();
+    let res = controller.scan_with_config(scan_config).unwrap();
     for ap in res {
         println!("{:?}", ap);
     }
-
 
     println!("{:?}", controller.capabilities());
     println!("Wi-Fi connect: {:?}", controller.connect());

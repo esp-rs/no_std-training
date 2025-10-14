@@ -16,21 +16,21 @@ opt-level = 3
 lto = "off"
 
 [dependencies]
-esp-alloc = { git = "https://github.com/esp-rs/esp-hal", package = "esp-alloc", rev = "452c042" }
-esp-hal = { git = "https://github.com/esp-rs/esp-hal", package = "esp-hal", rev = "452c042", features = [
+esp-alloc = { version = "0.9.0" }
+esp-hal = { version = "1.0.0-rc.1",features = [
     "esp32c3",
     "unstable",
 ] }
 blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "b3ecefc222d8806edd221f266999ca339c52d34e" }
-esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", package = "esp-backtrace", rev = "452c042", features = [
+esp-backtrace = { version = "0.18.0", features = [
     "esp32c3",
     "panic-handler",
     "println",
 ]}
-esp-bootloader-esp-idf = {git = "https://github.com/esp-rs/esp-hal", package = "esp-bootloader-esp-idf", rev = "452c042", features = ["esp32c3"]}
-esp-println = { git = "https://github.com/esp-rs/esp-hal", package = "esp-println", rev = "452c042", features = ["esp32c3", "log-04"] }
-esp-rtos = { git = "https://github.com/esp-rs/esp-hal", package = "esp-rtos", rev = "452c042", features = ["esp32c3", "log-04"] }
-esp-radio = { git = "https://github.com/esp-rs/esp-hal", package = "esp-radio", rev = "452c042", features = [
+esp-bootloader-esp-idf  = { version = "0.3.0", features = ["esp32c3"]}
+esp-println = { version = "0.16.0", features = ["esp32c3", "log-04"] }
+esp-rtos = { version = "0.1.0", features = ["esp32c3", "log-04", "esp-radio"] }
+esp-radio = { version = "0.16.0", features = [
     "esp32c3",
     "wifi",
     "smoltcp",
