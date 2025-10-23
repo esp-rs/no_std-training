@@ -143,29 +143,156 @@ async fn main(spawner: Spawner) -> ! {
     }
 }
 
+// Define the form structure for WiFi credentials
+#[derive(serde::Deserialize)]
+struct WifiForm {
+    ssid: heapless::String<32>,
+    password: heapless::String<64>,
+}
+
+// Create router with picoserve
+fn make_app() -> picoserve::Router<impl picoserve::routing::PathRouter<(), picoserve::routing::NoPathParameters>, (), picoserve::routing::NoPathParameters> {
+    picoserve::Router::new()
+        .route("/", picoserve::routing::get(home_handler))
+        .route("/save", picoserve::routing::post(save_handler))
+        .route("/generate_204", picoserve::routing::get(captive_redirect))
+        .route("/gen_204", picoserve::routing::get(captive_redirect))
+        .route("/ncsi.txt", picoserve::routing::get(captive_redirect))
+        .route("/connecttest.txt", picoserve::routing::get(captive_redirect))
+        .route("/hotspot-detect.html", picoserve::routing::get(apple_captive))
+        .route("/library/test/success.html", picoserve::routing::get(apple_captive))
+}
+
+async fn home_handler() -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
+    (
+        picoserve::response::StatusCode::OK,
+        &[("Content-Type", "text/html; charset=utf-8")],
+        "<!DOCTYPE html>\
+        <html>\
+        <head>\
+            <meta charset='utf-8'>\
+            <meta name='viewport' content='width=device-width, initial-scale=1'>\
+            <title>ESP WiFi Provisioning</title>\
+            <style>\
+                body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }\
+                .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\
+                h1 { color: #333; }\
+                .info { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }\
+                .status { color: #4caf50; font-weight: bold; }\
+                input, button { width: 100%; padding: 12px; margin: 8px 0; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }\
+                button { background: #2196F3; color: white; cursor: pointer; font-weight: bold; }\
+                button:hover { background: #0b7dda; }\
+            </style>\
+        </head>\
+        <body>\
+            <div class='container'>\
+                <h1>ESP32-C3 WiFi Provisioning</h1>\
+                <div class='info'>\
+                    <p class='status'>+ Connected to ESP32-C3 Access Point</p>\
+                    <p>Device: <strong>esp-radio</strong></p>\
+                    <p>IP Address: <strong>192.168.2.1</strong></p>\
+                </div>\
+                <h2>Configure WiFi</h2>\
+                <form action='/save' method='post'>\
+                    <input type='text' name='ssid' placeholder='WiFi SSID' required>\
+                    <input type='password' name='password' placeholder='WiFi Password' required>\
+                    <button type='submit'>Save Configuration</button>\
+                </form>\
+                <p style='text-align: center; color: #999; margin-top: 20px;'>Powered by Rust & Embassy</p>\
+            </div>\
+        </body>\
+        </html>"
+    )
+}
+
+async fn save_handler(
+    form: picoserve::extract::Form<WifiForm>
+) -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
+    println!("=== WiFi Credentials Received ===");
+    println!("SSID: {}", form.0.ssid);
+    println!("Password: {}", form.0.password);
+    println!("================================");
+
+    // Send credentials to the connection task
+    let credentials = WifiCredentials {
+        ssid: form.0.ssid,
+        password: form.0.password,
+    };
+    println!("Sending credentials to connection task...");
+    WIFI_CREDENTIALS_CHANNEL.sender().send(credentials).await;
+    println!("Credentials sent!");
+
+    (
+        picoserve::response::StatusCode::OK,
+        &[("Content-Type", "text/html; charset=utf-8")],
+        "<!DOCTYPE html>\
+        <html>\
+        <head>\
+            <meta charset='utf-8'>\
+            <meta name='viewport' content='width=device-width, initial-scale=1'>\
+            <title>Configuration Saved</title>\
+            <style>\
+                body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }\
+                .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\
+                h1 { color: #4caf50; }\
+                .success { background: #c8e6c9; padding: 15px; border-radius: 5px; margin: 20px 0; }\
+            </style>\
+        </head>\
+        <body>\
+            <div class='container'>\
+                <h1>Configuration Saved!</h1>\
+                <div class='success'>\
+                    <p>Your WiFi credentials have been received.</p>\
+                    <p>Check the serial console for details.</p>\
+                </div>\
+            </div>\
+        </body>\
+        </html>"
+    )
+}
+
+async fn captive_redirect() -> picoserve::response::Redirect {
+    picoserve::response::Redirect::to("http://192.168.2.1/")
+}
+
+async fn apple_captive() -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
+    (
+        picoserve::response::StatusCode::OK,
+        &[("Content-Type", "text/html")],
+        "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"
+    )
+}
+
 #[embassy_executor::task]
 async fn run_http_server(stack: Stack<'static>) {
-    use embedded_io_async::Write;
-
-    let mut rx_buffer = [0; 2048];
-    let mut tx_buffer = [0; 2048];
-
-    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-    socket.set_timeout(Some(EmbassyDuration::from_secs(10)));
+    let app = make_app();
 
     const HTTP_PORT: u16 = 80;
     println!("Starting HTTP server on port {HTTP_PORT}");
 
+    let config = picoserve::Config::new(picoserve::Timeouts {
+        start_read_request: Some(EmbassyDuration::from_secs(5)),
+        read_request: Some(EmbassyDuration::from_secs(5)),
+        write: Some(EmbassyDuration::from_secs(1)),
+    }).keep_connection_alive();
+
     loop {
+        let mut rx_buffer = [0; 2048];
+        let mut tx_buffer = [0; 2048];
+        let mut http_buffer = [0; 2048];
+
+        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+        socket.set_timeout(Some(EmbassyDuration::from_secs(10)));
+
         println!("HTTP: Waiting for connection...");
-        let r = socket
+        let result = socket
             .accept(IpListenEndpoint {
                 addr: None,
                 port: HTTP_PORT,
             })
             .await;
 
-        if let Err(e) = r {
+        if let Err(e) = result {
             println!("HTTP accept error: {:?}", e);
             Timer::after(EmbassyDuration::from_millis(100)).await;
             continue;
@@ -173,247 +300,16 @@ async fn run_http_server(stack: Stack<'static>) {
 
         println!("HTTP: Client connected");
 
-        // Read HTTP request
-        let mut buffer = [0u8; 1024];
-        let mut pos = 0;
-        let mut is_android_detection = false;
-        let mut is_apple_detection = false;
-        let mut is_post_save = false;
-        let mut content_length: usize = 0;
-        let mut headers_end: usize = 0;
-        let mut headers_parsed = false;
-
-        loop {
-            match socket.read(&mut buffer[pos..]).await {
-                Ok(0) => break,
-                Ok(len) => {
-                    pos += len;
-                    let received = unsafe { core::str::from_utf8_unchecked(&buffer[..pos]) };
-
-                    if received.contains("\r\n\r\n") && !headers_parsed {
-                        // Extract and analyze request line
-                        if let Some(first_line) = received.lines().next() {
-                            println!("HTTP Request: {}", first_line);
-
-                            // Check for detection endpoints
-                            is_android_detection = first_line.contains("GET /generate_204")
-                                || first_line.contains("GET /gen_204")
-                                || first_line.contains("GET /ncsi.txt")
-                                || first_line.contains("GET /connecttest.txt");
-
-                            is_apple_detection = first_line.contains("GET /hotspot-detect.html")
-                                || first_line.contains("GET /library/test/success.html");
-
-                            is_post_save = first_line.contains("POST /save");
-                        }
-
-                        // Find headers end position
-                        headers_end = received.find("\r\n\r\n").unwrap_or(0) + 4;
-
-                        // For POST requests, extract Content-Length
-                        if is_post_save {
-                            // Parse Content-Length header
-                            for line in received.lines() {
-                                if line.to_lowercase().starts_with("content-length:")
-                                    && let Some(len_str) = line.split(':').nth(1)
-                                {
-                                    content_length = len_str.trim().parse().unwrap_or(0);
-                                    println!("Content-Length: {}", content_length);
-                                }
-                            }
-                        }
-
-                        headers_parsed = true;
-                    }
-
-                    // For POST requests, check if we have the full body
-                    if headers_parsed {
-                        if is_post_save {
-                            let body_received = pos.saturating_sub(headers_end);
-                            println!("Body received: {}/{}", body_received, content_length);
-
-                            if body_received >= content_length && content_length > 0 {
-                                break;
-                            }
-                        } else {
-                            // For GET requests, headers are enough
-                            break;
-                        }
-                    }
-
-                    if pos >= buffer.len() {
-                        println!("Buffer full, breaking");
-                        break;
-                    }
-                }
-                Err(e) => {
-                    println!("HTTP read error: {:?}", e);
-                    break;
-                }
+        match picoserve::serve(&app, &config, &mut http_buffer, socket).await {
+            Ok(handled_requests_count) => {
+                println!("HTTP: Handled {} requests", handled_requests_count);
+            }
+            Err(e) => {
+                println!("HTTP error: {:?}", e);
             }
         }
 
-        // If it's a POST to /save, parse the form data
-        if is_post_save {
-            let received = unsafe { core::str::from_utf8_unchecked(&buffer[..pos]) };
-
-            // Find the body after \r\n\r\n
-            if let Some(body_start) = received.find("\r\n\r\n") {
-                let body = &received[body_start + 4..];
-                println!("POST body: {}", body);
-
-                // Parse form data (application/x-www-form-urlencoded)
-                let mut ssid: Option<&str> = None;
-                let mut password: Option<&str> = None;
-
-                for param in body.split('&') {
-                    if let Some((key, value)) = param.split_once('=') {
-                        match key {
-                            "ssid" => ssid = Some(value),
-                            "password" => password = Some(value),
-                            _ => {}
-                        }
-                    }
-                }
-
-                // Print the credentials
-                println!("=== WiFi Credentials Received ===");
-                let mut decoded_ssid_str = heapless::String::<32>::new();
-                let mut decoded_password_str = heapless::String::<64>::new();
-
-                if let Some(s) = ssid {
-                    // URL decode the SSID (replace + with space, handle %XX encoding)
-                    let decoded_ssid = s.replace('+', " ");
-                    println!("SSID: {}", decoded_ssid);
-                    let _ = decoded_ssid_str.push_str(&decoded_ssid);
-                } else {
-                    println!("SSID: (not found)");
-                }
-                if let Some(p) = password {
-                    // URL decode the password (replace + with space, handle %XX encoding)
-                    let decoded_password = p.replace('+', " ");
-                    println!("Password: {}", decoded_password);
-                    let _ = decoded_password_str.push_str(&decoded_password);
-                } else {
-                    println!("Password: (not found)");
-                }
-                println!("================================");
-
-                // Send credentials to the connection task
-                if !decoded_ssid_str.is_empty() {
-                    let credentials = WifiCredentials {
-                        ssid: decoded_ssid_str,
-                        password: decoded_password_str,
-                    };
-                    println!("Sending credentials to connection task...");
-                    WIFI_CREDENTIALS_CHANNEL.sender().send(credentials).await;
-                    println!("Credentials sent!");
-                }
-            } else {
-                println!("POST body not found!");
-            }
-        }
-
-        // Determine response based on request path
-        let response: &[u8] = if is_post_save {
-            // Response for WiFi credentials submission
-            b"HTTP/1.1 200 OK\r\n\
-              Content-Type: text/html; charset=utf-8\r\n\
-              Connection: close\r\n\
-              \r\n\
-              <!DOCTYPE html>\
-              <html>\
-              <head>\
-                  <meta charset='utf-8'>\
-                  <meta name='viewport' content='width=device-width, initial-scale=1'>\
-                  <title>Configuration Saved</title>\
-                  <style>\
-                      body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }\
-                      .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\
-                      h1 { color: #4caf50; }\
-                      .success { background: #c8e6c9; padding: 15px; border-radius: 5px; margin: 20px 0; }\
-                  </style>\
-              </head>\
-              <body>\
-                  <div class='container'>\
-                      <h1>Configuration Saved!</h1>\
-                      <div class='success'>\
-                          <p>Your WiFi credentials have been received.</p>\
-                          <p>Check the serial console for details.</p>\
-                      </div>\
-                  </div>\
-              </body>\
-              </html>\r\n"
-        } else if is_android_detection {
-            // Android/Chrome captive portal detection - return 302 redirect
-            b"HTTP/1.1 302 Found\r\n\
-              Location: http://192.168.2.1/\r\n\
-              Content-Length: 0\r\n\
-              Connection: close\r\n\
-              \r\n"
-        } else if is_apple_detection {
-            // Apple iOS captive portal detection - return success page
-            b"HTTP/1.1 200 OK\r\n\
-              Content-Type: text/html\r\n\
-              Connection: close\r\n\
-              \r\n\
-              <HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>\r\n"
-        } else {
-            // Main captive portal page
-            b"HTTP/1.1 200 OK\r\n\
-              Content-Type: text/html; charset=utf-8\r\n\
-              Connection: close\r\n\
-              \r\n\
-              <!DOCTYPE html>\
-              <html>\
-              <head>\
-                  <meta charset='utf-8'>\
-                  <meta name='viewport' content='width=device-width, initial-scale=1'>\
-                  <title>ESP WiFi Provisioning</title>\
-                  <style>\
-                      body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }\
-                      .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\
-                      h1 { color: #333; }\
-                      .info { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }\
-                      .status { color: #4caf50; font-weight: bold; }\
-                      input, button { width: 100%; padding: 12px; margin: 8px 0; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }\
-                      button { background: #2196F3; color: white; cursor: pointer; font-weight: bold; }\
-                      button:hover { background: #0b7dda; }\
-                  </style>\
-              </head>\
-              <body>\
-                  <div class='container'>\
-                      <h1>ESP32-C3 WiFi Provisioning</h1>\
-                      <div class='info'>\
-                          <p class='status'>+ Connected to ESP32-C3 Access Point</p>\
-                          <p>Device: <strong>esp-radio</strong></p>\
-                          <p>IP Address: <strong>192.168.2.1</strong></p>\
-                      </div>\
-                      <h2>Configure WiFi</h2>\
-                      <form action='/save' method='post'>\
-                          <input type='text' name='ssid' placeholder='WiFi SSID' required>\
-                          <input type='password' name='password' placeholder='WiFi Password' required>\
-                          <button type='submit'>Save Configuration</button>\
-                      </form>\
-                      <p style='text-align: center; color: #999; margin-top: 20px;'>Powered by Rust & Embassy</p>\
-                  </div>\
-              </body>\
-              </html>\r\n"
-        };
-
-        // Send response
-        if let Err(e) = socket.write_all(response).await {
-            println!("HTTP write error: {:?}", e);
-        }
-
-        if let Err(e) = socket.flush().await {
-            println!("HTTP flush error: {:?}", e);
-        }
-
         Timer::after(EmbassyDuration::from_millis(100)).await;
-        socket.close();
-        Timer::after(EmbassyDuration::from_millis(100)).await;
-        socket.abort();
     }
 }
 
