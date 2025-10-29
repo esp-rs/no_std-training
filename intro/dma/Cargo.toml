@@ -10,7 +10,7 @@ esp-backtrace = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d"
     "panic-handler",
     "println",
 ]}
-esp-bootloader-esp-id = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d", features = ["esp32c3"]}
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d", features = ["esp32c3"]}
 esp-hal = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d",features = [
     "esp32c3",
     "unstable",

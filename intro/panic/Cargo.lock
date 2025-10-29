@@ -315,7 +315,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "esp-bootloader-esp-idf"
+name = "esp-bootloader-esp-idff"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c319c4a24fb44ef4c5f9854ff3dc6010eb8f15a6613d024227aa2355e3f6a334"
@@ -748,7 +748,7 @@ name = "panic"
 version = "0.1.0"
 dependencies = [
  "esp-backtrace",
- "esp-bootloader-esp-idf",
+ "esp-bootloader-esp-idff",
  "esp-hal",
  "esp-println",
 ]

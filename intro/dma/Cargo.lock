@@ -143,7 +143,7 @@ name = "dma"
 version = "0.1.0"
 dependencies = [
  "esp-backtrace",
- "esp-bootloader-esp-idf",
+ "esp-bootloader-esp-idff",
  "esp-hal",
  "esp-println",
 ]
@@ -324,7 +324,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "esp-bootloader-esp-idf"
+name = "esp-bootloader-esp-idff"
 version = "0.2.0"
 source = "git+https://github.com/esp-rs/esp-hal?rev=c742182#c742182e77c69bf2aa4116ea851975192bbf37ab"
 dependencies = [
