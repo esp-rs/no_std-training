@@ -52,6 +52,10 @@ static WIFI_CONNECTED: Signal<embassy_sync::blocking_mutex::raw::CriticalSection
     Signal::new();
 
 const GW_IP_ADDR_ENV: Option<&'static str> = option_env!("GATEWAY_IP");
+// HTML templates embedded at compile time
+const HOME_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/home.html"));
+const SAVED_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/saved.html"));
+const APPLE_CAPTIVE_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/apple_captive.html"));
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -167,41 +171,7 @@ async fn home_handler() -> (picoserve::response::StatusCode, &'static [(&'static
     (
         picoserve::response::StatusCode::OK,
         &[("Content-Type", "text/html; charset=utf-8")],
-        "<!DOCTYPE html>\
-        <html>\
-        <head>\
-            <meta charset='utf-8'>\
-            <meta name='viewport' content='width=device-width, initial-scale=1'>\
-            <title>ESP WiFi Provisioning</title>\
-            <style>\
-                body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }\
-                .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\
-                h1 { color: #333; }\
-                .info { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }\
-                .status { color: #4caf50; font-weight: bold; }\
-                input, button { width: 100%; padding: 12px; margin: 8px 0; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }\
-                button { background: #2196F3; color: white; cursor: pointer; font-weight: bold; }\
-                button:hover { background: #0b7dda; }\
-            </style>\
-        </head>\
-        <body>\
-            <div class='container'>\
-                <h1>ESP32-C3 WiFi Provisioning</h1>\
-                <div class='info'>\
-                    <p class='status'>+ Connected to ESP32-C3 Access Point</p>\
-                    <p>Device: <strong>esp-radio</strong></p>\
-                    <p>IP Address: <strong>192.168.2.1</strong></p>\
-                </div>\
-                <h2>Configure WiFi</h2>\
-                <form action='/save' method='post'>\
-                    <input type='text' name='ssid' placeholder='WiFi SSID' required>\
-                    <input type='password' name='password' placeholder='WiFi Password' required>\
-                    <button type='submit'>Save Configuration</button>\
-                </form>\
-                <p style='text-align: center; color: #999; margin-top: 20px;'>Powered by Rust & Embassy</p>\
-            </div>\
-        </body>\
-        </html>"
+        HOME_HTML,
     )
 }
 
@@ -225,29 +195,7 @@ async fn save_handler(
     (
         picoserve::response::StatusCode::OK,
         &[("Content-Type", "text/html; charset=utf-8")],
-        "<!DOCTYPE html>\
-        <html>\
-        <head>\
-            <meta charset='utf-8'>\
-            <meta name='viewport' content='width=device-width, initial-scale=1'>\
-            <title>Configuration Saved</title>\
-            <style>\
-                body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }\
-                .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\
-                h1 { color: #4caf50; }\
-                .success { background: #c8e6c9; padding: 15px; border-radius: 5px; margin: 20px 0; }\
-            </style>\
-        </head>\
-        <body>\
-            <div class='container'>\
-                <h1>Configuration Saved!</h1>\
-                <div class='success'>\
-                    <p>Your WiFi credentials have been received.</p>\
-                    <p>Check the serial console for details.</p>\
-                </div>\
-            </div>\
-        </body>\
-        </html>"
+        SAVED_HTML,
     )
 }
 
@@ -259,7 +207,7 @@ async fn apple_captive() -> (picoserve::response::StatusCode, &'static [(&'stati
     (
         picoserve::response::StatusCode::OK,
         &[("Content-Type", "text/html")],
-        "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"
+        APPLE_CAPTIVE_HTML,
     )
 }
 
@@ -273,7 +221,7 @@ async fn run_http_server(stack: Stack<'static>) {
     let config = picoserve::Config::new(picoserve::Timeouts {
         start_read_request: Some(EmbassyDuration::from_secs(5)),
         read_request: Some(EmbassyDuration::from_secs(5)),
-        write: Some(EmbassyDuration::from_secs(1)),
+        write: Some(EmbassyDuration::from_secs(3)),
     }).keep_connection_alive();
 
     loop {
@@ -400,6 +348,10 @@ async fn connection(mut controller: WifiController<'static>) {
     println!("Waiting for WiFi credentials...");
     let credentials = WIFI_CREDENTIALS_CHANNEL.receiver().receive().await;
     println!("Credentials received! SSID: {}", credentials.ssid);
+
+    // Give the HTTP handler time to send the saved page before dropping AP
+    println!("Delaying AP shutdown to allow HTTP response to complete...");
+    Timer::after(EmbassyDuration::from_secs(2)).await;
 
     // Stop the AP
     println!("Stopping AP mode...");
