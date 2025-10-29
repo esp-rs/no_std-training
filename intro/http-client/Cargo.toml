@@ -27,7 +27,7 @@ esp-backtrace = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d"
     "panic-handler",
     "println",
 ]}
-esp-bootloader-esp-id = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d", features = ["esp32c3"]}
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d", features = ["esp32c3"]}
 esp-println = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d", features = ["esp32c3", "log-04"] }
 esp-rtos = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d", features = ["esp32c3", "log-04", "esp-radio"] }
 esp-radio = { git = "https://github.com/esp-rs/esp-hal.git", rev = "ff8457d", features = [
@@ -41,4 +41,4 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
     "medium-ethernet",
     "socket-raw",
 ] }
-embedded-io         = { version = "0.7.1", default-features = false }
+embedded-io         = { version = "0.6.1", default-features = false }
