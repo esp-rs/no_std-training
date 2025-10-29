@@ -55,7 +55,6 @@ const GW_IP_ADDR_ENV: Option<&'static str> = option_env!("GATEWAY_IP");
 // HTML templates embedded at compile time
 const HOME_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/home.html"));
 const SAVED_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/saved.html"));
-const APPLE_CAPTIVE_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/apple_captive.html"));
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -163,8 +162,6 @@ fn make_app() -> picoserve::Router<impl picoserve::routing::PathRouter<(), picos
         .route("/gen_204", picoserve::routing::get(captive_redirect))
         .route("/ncsi.txt", picoserve::routing::get(captive_redirect))
         .route("/connecttest.txt", picoserve::routing::get(captive_redirect))
-        .route("/hotspot-detect.html", picoserve::routing::get(apple_captive))
-        .route("/library/test/success.html", picoserve::routing::get(apple_captive))
 }
 
 async fn home_handler() -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
@@ -201,14 +198,6 @@ async fn save_handler(
 
 async fn captive_redirect() -> picoserve::response::Redirect {
     picoserve::response::Redirect::to("http://192.168.2.1/")
-}
-
-async fn apple_captive() -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
-    (
-        picoserve::response::StatusCode::OK,
-        &[("Content-Type", "text/html")],
-        APPLE_CAPTIVE_HTML,
-    )
 }
 
 #[embassy_executor::task]
