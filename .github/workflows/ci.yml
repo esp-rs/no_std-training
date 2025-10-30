@@ -6,24 +6,35 @@ on:
       - "book/"
       - "book/**"
       - "**/README.md"
-      - ".github/workflows/wokwi_projects.yml"
   pull_request:
     paths-ignore:
       - "book/"
       - "book/**"
       - "**/README.md"
-      - ".github/workflows/wokwi_projects.yml"
   schedule:
     - cron: "50 7 * * *"
 
 env:
   CARGO_TERM_COLOR: always
-  SSID: Wokwi-GUEST
+  SSID: ""
   PASSWORD: ""
 
 jobs:
-  hello-world:
-    name: hello-world
+  projects:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          ["project/part4", "project/part3", "project/part2", "project/part1"]
     steps:
       - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          target: riscv32imc-unknown-none-elf
+          toolchain: nightly
+          components: rust-src
+
+      - run: cargo build --release
+        working-directory: ${{ matrix.project }}
