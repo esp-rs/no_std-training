@@ -1,22 +1,53 @@
+// 1. Install tools
+// cargo install --git https://github.com/bytebeamio/rumqtt rumqttd
+// brew install mosquitto
+// 2. Get your IP
+// ipconfig getifaddr en0
+// 3. Run the broker
+// rumqttd
+// 4. Subscribe to the topic
+// mosquitto_sub -h <IP> -p 1884 -V mqttv5 -i mac-subscriber -t 'temperature/#' -v
+// 5. Run the app
+// BROKER_HOST="<IP>" BROKER_PORT="1884" cargo r -r
+
 #![no_std]
 #![no_main]
 
-use core::{net::Ipv4Addr, str::FromStr, time::Duration};
+use core::{fmt::Write, net::Ipv4Addr, str::FromStr, time::Duration};
 
 use edge_captive::io::run;
 use embassy_executor::Spawner;
 use embassy_net::{
-    IpListenEndpoint, Ipv4Cidr, Runner, Stack, StackResources, StaticConfigV4, tcp::TcpSocket,
+    IpAddress, IpListenEndpoint, Ipv4Address, Ipv4Cidr, Runner, Stack, StackResources,
+    StaticConfigV4, dns::DnsQueryType, tcp::TcpSocket,
 };
 use embassy_sync::{channel::Channel, signal::Signal};
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
-use esp_hal::{clock::CpuClock, ram, rng::Rng, timer::timg::TimerGroup, interrupt::software::SoftwareInterruptControl};
+use esp_hal::{
+    clock::CpuClock,
+    i2c::master::{Config, I2c},
+    interrupt::software::SoftwareInterruptControl,
+    ram,
+    rng::Rng,
+    timer::timg::TimerGroup,
+};
 use esp_println::println;
 use esp_radio::{
     Controller,
     wifi::{AccessPointConfig, ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent},
+};
+use heapless::String;
+use log::{error, info};
+use rust_mqtt::{
+    client::{client::MqttClient, client_config::ClientConfig as MqttClientConfig},
+    packet::v5::reason_codes::ReasonCode,
+    utils::rng_generator::CountingRng,
+};
+use shtcx::{
+    self,
+    asynchronous::{PowerMode, ShtC3, max_measurement_duration, shtc3},
 };
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -30,6 +61,9 @@ macro_rules! mk_static {
         x
     }};
 }
+
+const BROKER_HOST: Option<&'static str> = option_env!("BROKER_HOST");
+const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
 
 #[derive(Clone, Debug)]
 struct WifiCredentials {
@@ -48,8 +82,27 @@ static WIFI_CONNECTED: Signal<embassy_sync::blocking_mutex::raw::CriticalSection
 
 const GW_IP_ADDR_ENV: Option<&'static str> = option_env!("GATEWAY_IP");
 // HTML templates embedded at compile time
-const HOME_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/home.html"));
-const SAVED_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/saved.html"));
+const HOME_HTML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/templates/home.html"
+));
+const SAVED_HTML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/templates/saved.html"
+));
+
+fn parse_ipv4_address(s: &str) -> Option<IpAddress> {
+    let mut parts_iter = s.split('.');
+    let a = parts_iter.next()?.parse::<u8>().ok()?;
+    let b = parts_iter.next()?.parse::<u8>().ok()?;
+    let c = parts_iter.next()?.parse::<u8>().ok()?;
+    let d = parts_iter.next()?.parse::<u8>().ok()?;
+    // Ensure there are exactly 4 parts
+    if parts_iter.next().is_some() {
+        return None;
+    }
+    Some(IpAddress::Ipv4(Ipv4Address::new(a, b, c, d)))
+}
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -62,15 +115,28 @@ async fn main(spawner: Spawner) -> ! {
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(
-        timg0.timer0,
-        sw_int.software_interrupt0,
+    esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
+
+    let sda = peripherals.GPIO10;
+    let scl = peripherals.GPIO8;
+    let i2c = I2c::new(peripherals.I2C0, Config::default())
+        .unwrap()
+        .with_sda(sda)
+        .with_scl(scl)
+        .into_async();
+    let mut sht = shtc3(i2c);
+
+    println!(
+        "Raw ID register: {}",
+        sht.raw_id_register()
+            .await
+            .expect("Failed to get raw ID register")
     );
 
     let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().unwrap());
 
     let (controller, interfaces) =
-        esp_radio::wifi::new(&esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
+        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
 
     // Start with AP device for provisioning
     let ap_device = interfaces.ap;
@@ -113,7 +179,7 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(sta_net_task(sta_runner)).ok();
     spawner.spawn(run_dhcp(ap_stack, gw_ip_addr)).ok();
     spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
-    spawner.spawn(http_client_task(sta_stack)).ok();
+    spawner.spawn(mqtt_task(sta_stack, sht)).ok();
 
     loop {
         if ap_stack.is_link_up() {
@@ -147,17 +213,28 @@ struct WifiForm {
 }
 
 // Create router with picoserve
-fn make_app() -> picoserve::Router<impl picoserve::routing::PathRouter<(), picoserve::routing::NoPathParameters>, (), picoserve::routing::NoPathParameters> {
+fn make_app() -> picoserve::Router<
+    impl picoserve::routing::PathRouter<(), picoserve::routing::NoPathParameters>,
+    (),
+    picoserve::routing::NoPathParameters,
+> {
     picoserve::Router::new()
         .route("/", picoserve::routing::get(home_handler))
         .route("/save", picoserve::routing::post(save_handler))
         .route("/generate_204", picoserve::routing::get(captive_redirect))
         .route("/gen_204", picoserve::routing::get(captive_redirect))
         .route("/ncsi.txt", picoserve::routing::get(captive_redirect))
-        .route("/connecttest.txt", picoserve::routing::get(captive_redirect))
+        .route(
+            "/connecttest.txt",
+            picoserve::routing::get(captive_redirect),
+        )
 }
 
-async fn home_handler() -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
+async fn home_handler() -> (
+    picoserve::response::StatusCode,
+    &'static [(&'static str, &'static str)],
+    &'static str,
+) {
     (
         picoserve::response::StatusCode::OK,
         &[("Content-Type", "text/html; charset=utf-8")],
@@ -166,9 +243,16 @@ async fn home_handler() -> (picoserve::response::StatusCode, &'static [(&'static
 }
 
 async fn save_handler(
-    form: picoserve::extract::Form<WifiForm>
-) -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
-    println!("WiFi Credentials Received: SSID: {} | Password: {}", form.0.ssid, form.0.password);
+    form: picoserve::extract::Form<WifiForm>,
+) -> (
+    picoserve::response::StatusCode,
+    &'static [(&'static str, &'static str)],
+    &'static str,
+) {
+    println!(
+        "WiFi Credentials Received: SSID: {} | Password: {}",
+        form.0.ssid, form.0.password
+    );
 
     // Send credentials to the connection task
     let credentials = WifiCredentials {
@@ -201,7 +285,8 @@ async fn run_http_server(stack: Stack<'static>) {
         start_read_request: Some(EmbassyDuration::from_secs(5)),
         read_request: Some(EmbassyDuration::from_secs(5)),
         write: Some(EmbassyDuration::from_secs(3)),
-    }).keep_connection_alive();
+    })
+    .keep_connection_alive();
 
     loop {
         let mut rx_buffer = [0; 2048];
@@ -385,9 +470,10 @@ async fn sta_net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 }
 
 #[embassy_executor::task]
-async fn http_client_task(stack: Stack<'static>) {
-    use embedded_io_async::Write;
-
+async fn mqtt_task(
+    stack: Stack<'static>,
+    mut sht: ShtC3<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>,
+) {
     // Wait for WiFi connection
     println!("HTTP Client: Waiting for WiFi connection...");
     WIFI_CONNECTED.wait().await;
@@ -401,105 +487,144 @@ async fn http_client_task(stack: Stack<'static>) {
         Timer::after(EmbassyDuration::from_millis(100)).await;
     }
 
-    if let Some(config) = stack.config_v4() {
-        println!("HTTP Client: Got IP address: {:?}", config.address);
-        println!("HTTP Client: Gateway: {:?}", config.gateway);
-        println!("HTTP Client: DNS servers: {:?}", config.dns_servers);
+    println!("Waiting to get IP address...");
+    loop {
+        if let Some(config) = stack.config_v4() {
+            println!("Got IP: {}", config.address);
+            break;
+        }
+        Timer::after(EmbassyDuration::from_millis(500)).await;
     }
 
-    // Wait longer for the network to stabilize and routes to be established
-    println!("HTTP Client: Waiting for network to stabilize...");
-    Timer::after(EmbassyDuration::from_secs(5)).await;
-
-    println!("HTTP Client: Starting HTTP request...");
-
-    // Prepare buffers for TCP socket
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
     loop {
-        println!("Making HTTP request");
+        Timer::after(EmbassyDuration::from_millis(1_000)).await;
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(EmbassyDuration::from_secs(20)));
 
-        // Connect to www.mobile-j.de
-        let remote_ip = Ipv4Addr::new(142, 250, 185, 115);
-        let remote_port = 80;
+        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-        println!(
-            "HTTP Client: Connecting to www.mobile-j.de ({}:{})...",
-            remote_ip, remote_port
+        let host = match BROKER_HOST {
+            Some(h) => h,
+            None => {
+                error!(
+                    "No BROKER_HOST set. Provide e.g. BROKER_HOST=10.0.0.10 (or hostname) and optional BROKER_PORT."
+                );
+                continue;
+            }
+        };
+
+        // Default to rumqttd's v5 listener port (1884) unless overridden
+        let port: u16 = BROKER_PORT
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(1884);
+
+        // If host is an IPv4 literal, bypass DNS
+        let address = if let Some(ip) = parse_ipv4_address(host) {
+            ip
+        } else {
+            match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
+                Ok(address) => address,
+                Err(e) => {
+                    error!("DNS lookup error: {e:?}");
+                    continue;
+                }
+            }
+        };
+
+        let remote_endpoint = (address, port);
+        info!("connecting to MQTT broker at {}:{}...", host, port);
+        let connection = socket.connect(remote_endpoint).await;
+        if let Err(e) = connection {
+            error!("connect error: {:?}", e);
+            continue;
+        }
+        info!("connected!");
+
+        let mut config = MqttClientConfig::new(
+            rust_mqtt::client::client_config::MqttVersion::MQTTv5,
+            CountingRng(20000),
+        );
+        config.add_max_subscribe_qos(rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1);
+        config.add_client_id("esp32c3");
+        config.max_packet_size = 1024;
+        let mut recv_buffer = [0; 512];
+        let mut write_buffer = [0; 512];
+
+        let write_len = write_buffer.len();
+        let recv_len = recv_buffer.len();
+        let mut client = MqttClient::<_, 5, _>::new(
+            socket,
+            &mut write_buffer,
+            write_len,
+            &mut recv_buffer,
+            recv_len,
+            config,
         );
 
-        match socket.connect((remote_ip, remote_port)).await {
-            Ok(()) => {
-                println!("HTTP Client: Connected!");
-
-                // Send HTTP/1.0 request
-                let http_request = b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n";
-
-                if let Err(e) = socket.write_all(http_request).await {
-                    println!("HTTP Client: Write error: {:?}", e);
-                } else if let Err(e) = socket.flush().await {
-                    println!("HTTP Client: Flush error: {:?}", e);
-                } else {
-                    println!("HTTP Client: Request sent, reading response...");
-
-                    // Read response
-                    let mut response_buffer = [0u8; 512];
-                    let mut total_read = 0;
-                    let mut first_chunk = true;
-
-                    loop {
-                        match socket.read(&mut response_buffer).await {
-                            Ok(0) => {
-                                println!("HTTP Client: Connection closed by server");
-                                break;
-                            }
-                            Ok(n) => {
-                                total_read += n;
-                                let response_chunk = unsafe {
-                                    core::str::from_utf8_unchecked(&response_buffer[..n])
-                                };
-
-                                if first_chunk {
-                                    println!("HTTP Client: Response received:");
-                                    println!("{}", response_chunk);
-                                    first_chunk = false;
-                                } else {
-                                    println!("{}", response_chunk);
-                                }
-
-                                if total_read > 2048 {
-                                    println!("... (truncated, received {} bytes)", total_read);
-                                    break;
-                                }
-                            }
-                            Err(e) => {
-                                println!("HTTP Client: Read error: {:?}", e);
-                                break;
-                            }
-                        }
-                    }
-
-                    println!(
-                        "HTTP Client: Response complete ({} bytes total)",
-                        total_read
-                    );
+        match client.connect_to_broker().await {
+            Ok(()) => {}
+            Err(mqtt_error) => match mqtt_error {
+                ReasonCode::NetworkError => {
+                    error!("MQTT Network Error");
+                    continue;
                 }
+                _ => {
+                    error!("Other MQTT Error: {:?}", mqtt_error);
+                    continue;
+                }
+            },
+        }
 
-                socket.close();
+        loop {
+            // Read sensor
+            sht.start_measurement(PowerMode::NormalMode).await.unwrap();
+            // Wait for 12.1 ms https://github.com/Fristi/shtcx-rs/blob/feature/async-support/src/asynchronous.rs#L413-L424
+            let duration = max_measurement_duration(&sht, PowerMode::NormalMode);
+            Timer::after(EmbassyDuration::from_micros(duration.into())).await;
+            let measurement = sht.get_measurement_result().await.unwrap();
 
-                // Success! Wait before next request
-                println!("HTTP Client: Waiting 30 seconds before next request...");
-                Timer::after(EmbassyDuration::from_secs(30)).await;
+            println!(
+                "  {:.2} °C | {:.2} %RH",
+                measurement.temperature.as_degrees_celsius(),
+                measurement.humidity.as_percent(),
+            );
+
+            let mut temperature_string: String<32> = String::new();
+            write!(
+                temperature_string,
+                "{:.2}",
+                measurement.temperature.as_degrees_celsius()
+            )
+            .expect("write! failed!");
+
+            // MQTT
+            match client
+                .send_message(
+                    "temperature/1",
+                    temperature_string.as_bytes(),
+                    rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1,
+                    true,
+                )
+                .await
+            {
+                Ok(()) => {}
+                Err(mqtt_error) => match mqtt_error {
+                    ReasonCode::NetworkError => {
+                        error!("MQTT Network Error");
+                        continue;
+                    }
+                    _ => {
+                        error!("Other MQTT Error: {:?}", mqtt_error);
+                        continue;
+                    }
+                },
             }
-            Err(e) => {
-                println!("HTTP Client: Connection failed: {:?}", e);
-                println!("HTTP Client: Retrying in 10 seconds...");
-                Timer::after(EmbassyDuration::from_secs(10)).await;
-            }
+
+            // Delay
+            Timer::after(EmbassyDuration::from_secs(1)).await;
         }
     }
 }
