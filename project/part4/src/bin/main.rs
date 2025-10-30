@@ -1,3 +1,15 @@
+// 1. Install tools
+// cargo install --git https://github.com/bytebeamio/rumqtt rumqttd
+// brew install mosquitto
+// 2. Get your IP
+// ipconfig getifaddr en0
+// 3. Run the broker
+// rumqttd
+// 4. Subscribe to the topic
+// mosquitto_sub -h <IP> -p 1884 -V mqttv5 -i mac-subscriber -t 'temperature/#' -v
+// 5. Run the app
+// BROKER_HOST="<IP>" BROKER_PORT="1884" cargo r -r
+
 #![no_std]
 #![no_main]
 #![deny(
@@ -8,7 +20,7 @@
 use core::fmt::Write;
 
 use embassy_executor::Spawner;
-use embassy_net::{Runner, StackResources, dns::DnsQueryType, tcp::TcpSocket};
+use embassy_net::{Runner, StackResources, dns::DnsQueryType, tcp::TcpSocket, IpAddress, Ipv4Address};
 use embassy_time::{Duration, Timer};
 use esp_alloc as _;
 use esp_hal::{
@@ -58,6 +70,21 @@ macro_rules! mk_static {
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
+const BROKER_HOST: Option<&'static str> = option_env!("BROKER_HOST");
+const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
+
+fn parse_ipv4_address(s: &str) -> Option<IpAddress> {
+    let mut parts_iter = s.split('.');
+    let a = parts_iter.next()?.parse::<u8>().ok()?;
+    let b = parts_iter.next()?.parse::<u8>().ok()?;
+    let c = parts_iter.next()?.parse::<u8>().ok()?;
+    let d = parts_iter.next()?.parse::<u8>().ok()?;
+    // Ensure there are exactly 4 parts
+    if parts_iter.next().is_some() {
+        return None;
+    }
+    Some(IpAddress::Ipv4(Ipv4Address::new(a, b, c, d)))
+}
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -137,20 +164,36 @@ async fn main(spawner: Spawner) -> ! {
 
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-        let address = match stack
-            .dns_query("broker.emqx.io", DnsQueryType::A)
-            .await
-            .map(|a| a[0])
-        {
-            Ok(address) => address,
-            Err(e) => {
-                error!("DNS lookup error: {e:?}");
+        let host = match BROKER_HOST {
+            Some(h) => h,
+            None => {
+                error!(
+                    "No BROKER_HOST set. Provide e.g. BROKER_HOST=10.0.0.10 (or hostname) and optional BROKER_PORT."
+                );
                 continue;
             }
         };
 
-        let remote_endpoint = (address, 1883);
-        info!("connecting...");
+        // Default to rumqttd's v5 listener port (1884) unless overridden
+        let port: u16 = BROKER_PORT
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(1884);
+
+        // If host is an IPv4 literal, bypass DNS
+        let address = if let Some(ip) = parse_ipv4_address(host) {
+            ip
+        } else {
+            match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
+                Ok(address) => address,
+                Err(e) => {
+                    error!("DNS lookup error: {e:?}");
+                    continue;
+                }
+            }
+        };
+
+        let remote_endpoint = (address, port);
+        info!("connecting to MQTT broker at {}:{}...", host, port);
         let connection = socket.connect(remote_endpoint).await;
         if let Err(e) = connection {
             error!("connect error: {:?}", e);
@@ -163,13 +206,21 @@ async fn main(spawner: Spawner) -> ! {
             CountingRng(20000),
         );
         config.add_max_subscribe_qos(rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1);
-        config.add_client_id("mqttx_efcec0ef");
-        config.max_packet_size = 100;
-        let mut recv_buffer = [0; 80];
-        let mut write_buffer = [0; 80];
+        config.add_client_id("esp32c3");
+        config.max_packet_size = 1024;
+        let mut recv_buffer = [0; 512];
+        let mut write_buffer = [0; 512];
 
-        let mut client =
-            MqttClient::<_, 5, _>::new(socket, &mut write_buffer, 80, &mut recv_buffer, 80, config);
+        let write_len = write_buffer.len();
+        let recv_len = recv_buffer.len();
+        let mut client = MqttClient::<_, 5, _>::new(
+            socket,
+            &mut write_buffer,
+            write_len,
+            &mut recv_buffer,
+            recv_len,
+            config,
+        );
 
         match client.connect_to_broker().await {
             Ok(()) => {}
