@@ -15,9 +15,7 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
-#[cfg(target_arch = "riscv32")]
-use esp_hal::interrupt::software::SoftwareInterruptControl;
-use esp_hal::{clock::CpuClock, ram, rng::Rng, timer::timg::TimerGroup};
+use esp_hal::{clock::CpuClock, ram, rng::Rng, timer::timg::TimerGroup, interrupt::software::SoftwareInterruptControl};
 use esp_println::println;
 use esp_radio::{
     Controller,
@@ -66,11 +64,9 @@ async fn main(spawner: Spawner) -> ! {
     esp_alloc::heap_allocator!(size: 36 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    #[cfg(target_arch = "riscv32")]
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(
         timg0.timer0,
-        #[cfg(target_arch = "riscv32")]
         sw_int.software_interrupt0,
     );
 
@@ -128,7 +124,7 @@ async fn main(spawner: Spawner) -> ! {
         }
         Timer::after(EmbassyDuration::from_millis(500)).await;
     }
-    println!("=== WiFi Provisioning Portal Ready ===");
+    println!("WiFi Provisioning Portal Ready");
     println!("1. Connect to the AP: `esp-radio`");
     println!("2. Navigate to: http://{gw_ip_addr_str}/");
     while !ap_stack.is_config_up() {
@@ -175,10 +171,7 @@ async fn home_handler() -> (picoserve::response::StatusCode, &'static [(&'static
 async fn save_handler(
     form: picoserve::extract::Form<WifiForm>
 ) -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
-    println!("=== WiFi Credentials Received ===");
-    println!("SSID: {}", form.0.ssid);
-    println!("Password: {}", form.0.password);
-    println!("================================");
+    println!("WiFi Credentials Received: SSID: {} | Password: {}", form.0.ssid, form.0.password);
 
     // Send credentials to the connection task
     let credentials = WifiCredentials {
@@ -197,7 +190,7 @@ async fn save_handler(
 }
 
 async fn captive_redirect() -> picoserve::response::Redirect {
-    picoserve::response::Redirect::to("http://192.168.2.1/")
+    picoserve::response::Redirect::to("/")
 }
 
 #[embassy_executor::task]
@@ -367,7 +360,7 @@ async fn connection(mut controller: WifiController<'static>) {
     loop {
         match controller.connect_async().await {
             Ok(()) => {
-                println!("=== Successfully connected to WiFi! ===");
+                println!("Successfully connected to WiFi!");
                 // Signal that WiFi is connected
                 WIFI_CONNECTED.signal(());
 
