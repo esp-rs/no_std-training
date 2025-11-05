@@ -1,12 +1,12 @@
 // 1. Install tools
 // cargo install --git https://github.com/bytebeamio/rumqtt rumqttd
-// brew install mosquitto
+// brew install mosquitto / https://mosquitto.org/download/
 // 2. Get your IP
-// ipconfig getifaddr en0
+// ipconfig getifaddr en0 ow ip addr show eth0
 // 3. Run the broker
 // rumqttd
 // 4. Subscribe to the topic
-// mosquitto_sub -h <IP> -p 1884 -V mqttv5 -i mac-subscriber -t 'temperature/#' -v
+// mosquitto_sub -h <IP> -p 1884 -V mqttv5 -i mac-subscriber -t 'measeurement/#' -v
 // 5. Run the app
 // BROKER_HOST="<IP>" BROKER_PORT="1884" cargo r -r
 
@@ -603,7 +603,7 @@ async fn mqtt_task(
             // MQTT
             match client
                 .send_message(
-                    "temperature/1",
+                    "measeurement/temperature",
                     temperature_string.as_bytes(),
                     rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1,
                     true,
