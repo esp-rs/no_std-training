@@ -14,6 +14,7 @@ edge-dhcp = "0.6.0"
 edge-nal = "0.5.0"
 edge-nal-embassy = "0.6.0"
 embedded-io-async = "0.6.1"
+embedded-storage = "0.3.1"
 embassy-executor = "0.9.1"
 embassy-net = { version = "0.7.1", features = [
     "dhcpv4",
