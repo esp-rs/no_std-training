@@ -13,6 +13,9 @@
 // http-serve-folder --ip_address <IP> -p 8080 -l debug ota
 // 7. Run the app
 // BROKER_HOST="<IP>" BROKER_PORT="1884" HOST_IP=<IP> cargo r -r
+// 8. Join the AP network and navigate to http://<MCU_IP>/ the wifi credentials
+// Once the device stops the AP mode and starts the STA mode connected to the wifi, it will start sending sensor data to the MQTT broker and wait for the button press to trigger OTA update.
+// 9. Press the button to trigger OTA update. Ctrl+R to reset the device after the fimrware is downloaded.
 
 #![no_std]
 #![no_main]
@@ -107,16 +110,10 @@ const SAVED_HTML: &str = include_str!(concat!(
 ));
 
 fn parse_ipv4_address(s: &str) -> Option<IpAddress> {
-    let mut parts_iter = s.split('.');
-    let a = parts_iter.next()?.parse::<u8>().ok()?;
-    let b = parts_iter.next()?.parse::<u8>().ok()?;
-    let c = parts_iter.next()?.parse::<u8>().ok()?;
-    let d = parts_iter.next()?.parse::<u8>().ok()?;
-    // Ensure there are exactly 4 parts
-    if parts_iter.next().is_some() {
-        return None;
-    }
-    Some(IpAddress::Ipv4(Ipv4Address::new(a, b, c, d)))
+    Ipv4Addr::from_str(s).ok().map(|addr| {
+        let octets = addr.octets();
+        IpAddress::Ipv4(Ipv4Address::new(octets[0], octets[1], octets[2], octets[3]))
+    })
 }
 
 #[esp_rtos::main]
@@ -478,11 +475,7 @@ async fn connection(mut controller: WifiController<'static>) {
         match controller.connect_async().await {
             Ok(()) => {
                 println!("Successfully connected to WiFi!");
-                // Signal that WiFi is connected - signal multiple times to ensure all waiters wake
-                WIFI_CONNECTED.signal(());
-                Timer::after(EmbassyDuration::from_millis(10)).await;
-                WIFI_CONNECTED.signal(());
-                Timer::after(EmbassyDuration::from_millis(10)).await;
+                // Signal that WiFi is connected
                 WIFI_CONNECTED.signal(());
 
                 // Wait for disconnect event
@@ -570,16 +563,15 @@ async fn mqtt_task(
             .unwrap_or(1884);
 
         // If host is an IPv4 literal, bypass DNS
-        let address = if let Some(ip) = parse_ipv4_address(host) {
-            ip
-        } else {
-            match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
+        let address = match parse_ipv4_address(host) {
+            Some(ip) => ip,
+            None => match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
                 Ok(address) => address,
                 Err(e) => {
                     error!("DNS lookup error: {e:?}");
                     continue;
                 }
-            }
+            },
         };
 
         let remote_endpoint = (address, port);
@@ -600,9 +592,9 @@ async fn mqtt_task(
         config.max_packet_size = 1024;
         let mut recv_buffer = [0; 512];
         let mut write_buffer = [0; 512];
-
         let write_len = write_buffer.len();
         let recv_len = recv_buffer.len();
+
         let mut client = MqttClient::<_, 5, _>::new(
             socket,
             &mut write_buffer,
@@ -612,18 +604,12 @@ async fn mqtt_task(
             config,
         );
 
-        match client.connect_to_broker().await {
-            Ok(()) => {}
-            Err(mqtt_error) => match mqtt_error {
-                ReasonCode::NetworkError => {
-                    error!("MQTT Network Error");
-                    continue;
-                }
-                _ => {
-                    error!("Other MQTT Error: {:?}", mqtt_error);
-                    continue;
-                }
-            },
+        if let Err(mqtt_error) = client.connect_to_broker().await {
+            match mqtt_error {
+                ReasonCode::NetworkError => error!("MQTT Network Error"),
+                _ => error!("Other MQTT Error: {:?}", mqtt_error),
+            }
+            continue;
         }
 
         loop {
@@ -652,8 +638,14 @@ async fn mqtt_task(
             write!(humidity_string, "{:.2}", measurement.humidity.as_percent())
                 .expect("write! failed!");
 
+            // Helper to handle MQTT send errors
+            let handle_mqtt_error = |mqtt_error: ReasonCode| match mqtt_error {
+                ReasonCode::NetworkError => error!("MQTT Network Error"),
+                _ => error!("Other MQTT Error: {:?}", mqtt_error),
+            };
+
             // MQTT
-            match client
+            if let Err(e) = client
                 .send_message(
                     "measeurement/temperature",
                     temperature_string.as_bytes(),
@@ -662,19 +654,11 @@ async fn mqtt_task(
                 )
                 .await
             {
-                Ok(()) => {}
-                Err(mqtt_error) => match mqtt_error {
-                    ReasonCode::NetworkError => {
-                        error!("MQTT Network Error");
-                        continue;
-                    }
-                    _ => {
-                        error!("Other MQTT Error: {:?}", mqtt_error);
-                        continue;
-                    }
-                },
+                handle_mqtt_error(e);
+                continue;
             }
-            match client
+
+            if let Err(e) = client
                 .send_message(
                     "measeurement/humidity",
                     humidity_string.as_bytes(),
@@ -683,17 +667,8 @@ async fn mqtt_task(
                 )
                 .await
             {
-                Ok(()) => {}
-                Err(mqtt_error) => match mqtt_error {
-                    ReasonCode::NetworkError => {
-                        error!("MQTT Network Error");
-                        continue;
-                    }
-                    _ => {
-                        error!("Other MQTT Error: {:?}", mqtt_error);
-                        continue;
-                    }
-                },
+                handle_mqtt_error(e);
+                continue;
             }
 
             // Delay
