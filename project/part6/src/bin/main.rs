@@ -6,7 +6,7 @@
 // 3. Run the broker
 // rumqttd
 // 4. Subscribe to the topic
-// mosquitto_sub -h <IP> -p 1884 -V mqttv5 -i mac-subscriber -t 'measeurement/#' -v
+// mosquitto_sub -h <IP> -p 1884 -V mqttv5 -i mac-subscriber -t 'measurement/#' -v
 // 5. Install http-serve-folder
 // cargo install http-serve-folder
 // 6. Run the server
@@ -202,16 +202,26 @@ async fn main(spawner: Spawner) -> ! {
         seed,
     );
 
-    spawner.spawn(connection(controller)).ok();
+    spawner
+        .spawn(connection(
+            controller,
+            &WIFI_CREDENTIALS_CHANNEL,
+            &WIFI_CONNECTED,
+        ))
+        .ok();
     spawner.spawn(net_task(ap_runner)).ok();
     spawner.spawn(sta_net_task(sta_runner)).ok();
     spawner.spawn(run_dhcp(ap_stack, gw_ip_addr)).ok();
     spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
     // MQTT and HTTP client tasks run concurrently - MQTT continues publishing
     // sensor data while HTTP client waits for button press to trigger OTA update
-    spawner.spawn(mqtt_task(sta_stack, sht)).ok();
-    spawner.spawn(button_monitor(button)).ok();
-    spawner.spawn(http_client_task(sta_stack)).ok();
+    spawner
+        .spawn(mqtt_task(sta_stack, sht, &WIFI_CONNECTED))
+        .ok();
+    spawner.spawn(button_monitor(button, &BUTTON_PRESSED)).ok();
+    spawner
+        .spawn(http_client_task(sta_stack, &BUTTON_PRESSED, &FLASH_STORAGE))
+        .ok();
 
     loop {
         if ap_stack.is_link_up() {
@@ -229,7 +239,9 @@ async fn main(spawner: Spawner) -> ! {
         .config_v4()
         .inspect(|c| println!("ipv4 config: {c:?}"));
 
-    spawner.spawn(run_http_server(ap_stack)).ok();
+    spawner
+        .spawn(run_http_server(ap_stack, &WIFI_CREDENTIALS_CHANNEL))
+        .ok();
 
     // Keep main task alive
     loop {
@@ -298,7 +310,14 @@ fn parse_form_data(body: &[u8]) -> Option<WifiForm> {
 }
 
 #[embassy_executor::task]
-async fn run_http_server(stack: Stack<'static>) {
+async fn run_http_server(
+    stack: Stack<'static>,
+    wifi_credentials_channel: &'static Channel<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        WifiCredentials,
+        1,
+    >,
+) {
     const HTTP_PORT: u16 = 80;
     println!("Starting HTTP server on port {HTTP_PORT}");
 
@@ -325,7 +344,7 @@ async fn run_http_server(stack: Stack<'static>) {
 
         println!("HTTP: Client connected");
 
-        match handle_request(&mut socket).await {
+        match handle_request(&mut socket, wifi_credentials_channel).await {
             Ok(()) => {
                 println!("HTTP: Request handled successfully");
             }
@@ -338,7 +357,14 @@ async fn run_http_server(stack: Stack<'static>) {
     }
 }
 
-async fn handle_request<T>(socket: &mut T) -> Result<(), ()>
+async fn handle_request<T>(
+    socket: &mut T,
+    wifi_credentials_channel: &'static Channel<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        WifiCredentials,
+        1,
+    >,
+) -> Result<(), ()>
 where
     T: embedded_io_async::Read + embedded_io_async::Write,
 {
@@ -361,8 +387,12 @@ where
                     for i in 0..=request_len.saturating_sub(4) {
                         if &request_buffer[i..i + 4] == b"\r\n\r\n" {
                             // Found end of headers
-                            return handle_parsed_request(socket, &request_buffer[..request_len])
-                                .await;
+                            return handle_parsed_request(
+                                socket,
+                                &request_buffer[..request_len],
+                                wifi_credentials_channel,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -372,7 +402,15 @@ where
     }
 }
 
-async fn handle_parsed_request<T>(socket: &mut T, request: &[u8]) -> Result<(), ()>
+async fn handle_parsed_request<T>(
+    socket: &mut T,
+    request: &[u8],
+    wifi_credentials_channel: &'static Channel<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        WifiCredentials,
+        1,
+    >,
+) -> Result<(), ()>
 where
     T: embedded_io_async::Read + embedded_io_async::Write,
 {
@@ -423,7 +461,7 @@ where
                         "WiFi Credentials Received: SSID: {} | Password: {}",
                         form.ssid, form.password
                     );
-                    WIFI_CREDENTIALS_CHANNEL
+                    wifi_credentials_channel
                         .sender()
                         .send(WifiCredentials {
                             ssid: form.ssid,
@@ -551,7 +589,15 @@ async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
 }
 
 #[embassy_executor::task]
-async fn connection(mut controller: WifiController<'static>) {
+async fn connection(
+    mut controller: WifiController<'static>,
+    wifi_credentials_channel: &'static Channel<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        WifiCredentials,
+        1,
+    >,
+    wifi_connected: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
+) {
     println!("start connection task");
     println!("Device capabilities: {:?}", controller.capabilities());
 
@@ -565,7 +611,7 @@ async fn connection(mut controller: WifiController<'static>) {
 
     // Wait for credentials
     println!("Waiting for WiFi credentials...");
-    let credentials = WIFI_CREDENTIALS_CHANNEL.receiver().receive().await;
+    let credentials = wifi_credentials_channel.receiver().receive().await;
     println!("Credentials received! SSID: {}", credentials.ssid);
 
     // Give the HTTP handler time to send the saved page before dropping AP
@@ -599,7 +645,7 @@ async fn connection(mut controller: WifiController<'static>) {
             Ok(()) => {
                 println!("Successfully connected to WiFi!");
                 // Signal that WiFi is connected
-                WIFI_CONNECTED.signal(());
+                wifi_connected.signal(());
 
                 // Wait for disconnect event
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
@@ -628,10 +674,11 @@ async fn sta_net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 async fn mqtt_task(
     stack: Stack<'static>,
     mut sht: ShtC3<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>,
+    wifi_connected: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
 ) {
     // Wait for WiFi connection
     println!("MQTT: Waiting for WiFi connection...");
-    WIFI_CONNECTED.wait().await;
+    wifi_connected.wait().await;
     println!("MQTT: WiFi connected signal received, waiting for network configuration...");
 
     // Wait for DHCP to assign an IP address
@@ -770,7 +817,7 @@ async fn mqtt_task(
             // MQTT
             if let Err(e) = client
                 .send_message(
-                    "measeurement/temperature",
+                    "measurement/temperature",
                     temperature_string.as_bytes(),
                     rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1,
                     true,
@@ -783,7 +830,7 @@ async fn mqtt_task(
 
             if let Err(e) = client
                 .send_message(
-                    "measeurement/humidity",
+                    "measurement/humidity",
                     humidity_string.as_bytes(),
                     rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS1,
                     true,
@@ -801,7 +848,10 @@ async fn mqtt_task(
 }
 
 #[embassy_executor::task]
-async fn button_monitor(button: Input<'static>) {
+async fn button_monitor(
+    button: Input<'static>,
+    button_pressed: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
+) {
     println!("Button monitor: Waiting for button press...");
     let mut last_state = button.is_high();
 
@@ -813,7 +863,7 @@ async fn button_monitor(button: Input<'static>) {
         // Detect falling edge (button press - goes from high to low due to pull-up)
         if last_state && !current_state {
             println!("Button pressed!");
-            BUTTON_PRESSED.signal(());
+            button_pressed.signal(());
         }
 
         last_state = current_state;
@@ -824,6 +874,10 @@ async fn download_and_flash_firmware(
     stack: Stack<'static>,
     host_ip_str: &str,
     address: Ipv4Addr,
+    flash_storage: &'static Mutex<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        Option<FlashStorage<'static>>,
+    >,
 ) -> Result<(), ()> {
     use embedded_io_async::Write;
     use embedded_storage::Storage;
@@ -896,8 +950,8 @@ async fn download_and_flash_firmware(
                     println!("HTTP Client: Headers received, starting firmware download...");
 
                     // Get flash storage from mutex
-                    let mut flash_guard = FLASH_STORAGE.lock().await;
-                    let flash_storage = flash_guard.as_mut().ok_or_else(|| {
+                    let mut flash_guard = flash_storage.lock().await;
+                    let flash = flash_guard.as_mut().ok_or_else(|| {
                         println!("HTTP Client: Flash storage not available");
                     })?;
 
@@ -905,7 +959,7 @@ async fn download_and_flash_firmware(
                     let mut ota_buffer =
                         [0u8; esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN];
                     let mut ota = esp_bootloader_esp_idf::ota_updater::OtaUpdater::new(
-                        flash_storage,
+                        flash,
                         &mut ota_buffer,
                     )
                     .map_err(|e| {
@@ -993,7 +1047,14 @@ async fn download_and_flash_firmware(
 }
 
 #[embassy_executor::task]
-async fn http_client_task(stack: Stack<'static>) {
+async fn http_client_task(
+    stack: Stack<'static>,
+    button_pressed: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
+    flash_storage: &'static Mutex<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        Option<FlashStorage<'static>>,
+    >,
+) {
     println!("HTTP Client: Task started!");
     // Wait for WiFi connection - poll stack state instead of relying on signal
     // This is more reliable as the signal might not wake all waiters
@@ -1023,7 +1084,7 @@ async fn http_client_task(stack: Stack<'static>) {
     loop {
         // Wait for button press signal
         println!("HTTP Client: Waiting for BUTTON_PRESSED signal...");
-        BUTTON_PRESSED.wait().await;
+        button_pressed.wait().await;
         println!("HTTP Client: Button pressed signal received! Starting firmware download...");
 
         // Get host IP from environment variable
@@ -1045,7 +1106,7 @@ async fn http_client_task(stack: Stack<'static>) {
         };
 
         // Attempt firmware download - if successful, break out of loop
-        if download_and_flash_firmware(stack, host_ip_str, address)
+        if download_and_flash_firmware(stack, host_ip_str, address, flash_storage)
             .await
             .is_ok()
         {
