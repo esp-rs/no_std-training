@@ -238,92 +238,73 @@ async fn main(spawner: Spawner) -> ! {
 }
 
 // Define the form structure for WiFi credentials
-#[derive(serde::Deserialize)]
 struct WifiForm {
     ssid: heapless::String<32>,
     password: heapless::String<64>,
 }
 
-// Create router with picoserve
-fn make_app() -> picoserve::Router<
-    impl picoserve::routing::PathRouter<(), picoserve::routing::NoPathParameters>,
-    (),
-    picoserve::routing::NoPathParameters,
-> {
-    picoserve::Router::new()
-        .route("/", picoserve::routing::get(home_handler))
-        .route("/save", picoserve::routing::post(save_handler))
-        .route("/generate_204", picoserve::routing::get(captive_redirect))
-        .route("/gen_204", picoserve::routing::get(captive_redirect))
-        .route("/ncsi.txt", picoserve::routing::get(captive_redirect))
-        .route(
-            "/connecttest.txt",
-            picoserve::routing::get(captive_redirect),
-        )
+// Simple URL decoding
+fn url_decode(input: &str) -> heapless::String<256> {
+    let mut result = heapless::String::<256>::new();
+    let mut chars = input.chars();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '+' => {
+                result.push(' ').ok();
+            }
+            '%' => {
+                let hex1 = chars.next().and_then(|c| c.to_digit(16));
+                let hex2 = chars.next().and_then(|c| c.to_digit(16));
+                if let (Some(d1), Some(d2)) = (hex1, hex2) {
+                    result.push(char::from((d1 * 16 + d2) as u8)).ok();
+                } else {
+                    result.push(ch).ok();
+                }
+            }
+            _ => {
+                result.push(ch).ok();
+            }
+        }
+    }
+    result
 }
 
-async fn home_handler() -> (
-    picoserve::response::StatusCode,
-    &'static [(&'static str, &'static str)],
-    &'static str,
-) {
-    (
-        picoserve::response::StatusCode::OK,
-        &[("Content-Type", "text/html; charset=utf-8")],
-        HOME_HTML,
-    )
-}
+// Parse form data from URL-encoded body
+fn parse_form_data(body: &[u8]) -> Option<WifiForm> {
+    let body_str = core::str::from_utf8(body).ok()?;
+    let mut ssid = None;
+    let mut password = heapless::String::<64>::new();
 
-async fn save_handler(
-    form: picoserve::extract::Form<WifiForm>,
-) -> (
-    picoserve::response::StatusCode,
-    &'static [(&'static str, &'static str)],
-    &'static str,
-) {
-    println!(
-        "WiFi Credentials Received: SSID: {} | Password: {}",
-        form.0.ssid, form.0.password
-    );
+    for pair in body_str.split('&') {
+        let (key, value) = pair.split_once('=')?;
+        let decoded = url_decode(value);
 
-    // Send credentials to the connection task
-    let credentials = WifiCredentials {
-        ssid: form.0.ssid,
-        password: form.0.password,
-    };
-    println!("Sending credentials to connection task...");
-    WIFI_CREDENTIALS_CHANNEL.sender().send(credentials).await;
-    println!("Credentials sent!");
+        match key {
+            "ssid" => ssid = heapless::String::from_str(&decoded).ok(),
+            "password" => {
+                if let Ok(pwd) = heapless::String::from_str(&decoded) {
+                    password = pwd;
+                }
+            }
+            _ => {}
+        }
+    }
 
-    (
-        picoserve::response::StatusCode::OK,
-        &[("Content-Type", "text/html; charset=utf-8")],
-        SAVED_HTML,
-    )
-}
-
-async fn captive_redirect() -> picoserve::response::Redirect {
-    picoserve::response::Redirect::to("/")
+    Some(WifiForm {
+        ssid: ssid?,
+        password,
+    })
 }
 
 #[embassy_executor::task]
 async fn run_http_server(stack: Stack<'static>) {
-    let app = make_app();
-
     const HTTP_PORT: u16 = 80;
     println!("Starting HTTP server on port {HTTP_PORT}");
-
-    let config = picoserve::Config::new(picoserve::Timeouts {
-        start_read_request: Some(EmbassyDuration::from_secs(5)),
-        read_request: Some(EmbassyDuration::from_secs(5)),
-        write: Some(EmbassyDuration::from_secs(3)),
-    })
-    .keep_connection_alive();
 
     loop {
         let mut rx_buffer = [0; 2048];
         let mut tx_buffer = [0; 2048];
-        let mut http_buffer = [0; 2048];
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(EmbassyDuration::from_secs(10)));
@@ -344,9 +325,9 @@ async fn run_http_server(stack: Stack<'static>) {
 
         println!("HTTP: Client connected");
 
-        match picoserve::serve(&app, &config, &mut http_buffer, socket).await {
-            Ok(handled_requests_count) => {
-                println!("HTTP: Handled {} requests", handled_requests_count);
+        match handle_request(&mut socket).await {
+            Ok(()) => {
+                println!("HTTP: Request handled successfully");
             }
             Err(e) => {
                 println!("HTTP error: {:?}", e);
@@ -355,6 +336,148 @@ async fn run_http_server(stack: Stack<'static>) {
 
         Timer::after(EmbassyDuration::from_millis(100)).await;
     }
+}
+
+async fn handle_request<T>(socket: &mut T) -> Result<(), ()>
+where
+    T: embedded_io_async::Read + embedded_io_async::Write,
+{
+    // Read request line and headers
+    let mut request_buffer = [0u8; 1024];
+    let mut request_len = 0;
+
+    // Read until we get a complete request (ends with \r\n\r\n)
+    loop {
+        if request_len >= request_buffer.len() {
+            return Err(());
+        }
+
+        match socket.read(&mut request_buffer[request_len..]).await {
+            Ok(0) => return Err(()),
+            Ok(n) => {
+                request_len += n;
+                // Check for end of headers
+                if request_len >= 4 {
+                    for i in 0..=request_len.saturating_sub(4) {
+                        if &request_buffer[i..i + 4] == b"\r\n\r\n" {
+                            // Found end of headers
+                            return handle_parsed_request(socket, &request_buffer[..request_len])
+                                .await;
+                        }
+                    }
+                }
+            }
+            Err(_) => return Err(()),
+        }
+    }
+}
+
+async fn handle_parsed_request<T>(socket: &mut T, request: &[u8]) -> Result<(), ()>
+where
+    T: embedded_io_async::Read + embedded_io_async::Write,
+{
+    use edge_http::Method;
+
+    // Parse request line: "METHOD PATH HTTP/VERSION"
+    let request_str = core::str::from_utf8(request).map_err(|_| ())?;
+    let mut parts = request_str.lines().next().ok_or(())?.split_whitespace();
+    let method_str = parts.next().ok_or(())?;
+    let path = parts.next().ok_or(())?;
+
+    let method = match method_str {
+        "GET" => Method::Get,
+        "POST" => Method::Post,
+        _ => return send_response(socket, 405, "Method Not Allowed", &[], b"").await,
+    };
+
+    println!("HTTP: {} {}", method_str, path);
+
+    // Handle captive portal redirects
+    const CAPTIVE_PATHS: &[&str] = &["/generate_204", "/gen_204", "/ncsi.txt", "/connecttest.txt"];
+    if CAPTIVE_PATHS.contains(&path) {
+        return send_response(socket, 302, "Found", &[("Location", "/")], b"").await;
+    }
+
+    // Handle routes
+    match (method, path) {
+        (Method::Get, "/") => {
+            send_response(
+                socket,
+                200,
+                "OK",
+                &[("Content-Type", "text/html; charset=utf-8")],
+                HOME_HTML.as_bytes(),
+            )
+            .await
+        }
+        (Method::Post, "/save") => {
+            let body = request
+                .windows(4)
+                .position(|w| w == b"\r\n\r\n")
+                .map(|i| &request[i + 4..])
+                .unwrap_or(&[]);
+
+            match parse_form_data(body) {
+                Some(form) => {
+                    println!(
+                        "WiFi Credentials Received: SSID: {} | Password: {}",
+                        form.ssid, form.password
+                    );
+                    WIFI_CREDENTIALS_CHANNEL
+                        .sender()
+                        .send(WifiCredentials {
+                            ssid: form.ssid,
+                            password: form.password,
+                        })
+                        .await;
+                    println!("Credentials sent!");
+
+                    send_response(
+                        socket,
+                        200,
+                        "OK",
+                        &[("Content-Type", "text/html; charset=utf-8")],
+                        SAVED_HTML.as_bytes(),
+                    )
+                    .await
+                }
+                None => send_response(socket, 400, "Bad Request", &[], b"").await,
+            }
+        }
+        _ => send_response(socket, 404, "Not Found", &[], b"").await,
+    }
+}
+
+async fn send_response<T>(
+    socket: &mut T,
+    status_code: u16,
+    status_text: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> Result<(), ()>
+where
+    T: embedded_io_async::Write,
+{
+    use core::fmt::Write as FmtWrite;
+
+    let mut response = heapless::String::<512>::new();
+    write!(response, "HTTP/1.1 {} {}\r\n", status_code, status_text).map_err(|_| ())?;
+
+    for (name, value) in headers {
+        write!(response, "{}: {}\r\n", name, value).map_err(|_| ())?;
+    }
+
+    write!(response, "Content-Length: {}\r\n", body.len()).map_err(|_| ())?;
+    write!(response, "\r\n").map_err(|_| ())?;
+
+    socket
+        .write_all(response.as_bytes())
+        .await
+        .map_err(|_| ())?;
+    socket.write_all(body).await.map_err(|_| ())?;
+    socket.flush().await.map_err(|_| ())?;
+
+    Ok(())
 }
 
 #[embassy_executor::task]
