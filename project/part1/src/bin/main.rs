@@ -1,3 +1,6 @@
+// Reading sensors
+// 1. Run the app
+// cargo r -r
 #![no_std]
 #![no_main]
 #![deny(

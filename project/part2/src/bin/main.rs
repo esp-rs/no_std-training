@@ -1,3 +1,6 @@
+// Wifi Conectivity
+// 1. Run the app
+// SSID="<SSID>" PASSWORD=<PASSWORD> cargo r -r
 #![no_std]
 #![no_main]
 #![deny(
