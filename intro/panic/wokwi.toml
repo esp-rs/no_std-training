@@ -1,9 +1,0 @@
-[wokwi]
-version = 1
-# Exercise
-# firmware = "target/riscv32imc-unknown-none-elf/release/panic"
-# elf = "target/riscv32imc-unknown-none-elf/release/panic"
-
-# Solution
-firmware = 'target/riscv32imc-unknown-none-elf/release/examples/panic'
-elf = 'target/riscv32imc-unknown-none-elf/release/examples/panic'

@@ -1,6 +1,0 @@
-name: hello-world test
-version: 1
-author: Sergio Gasquez Arcos
-
-steps:
-  - wait-serial: "Hello world!"

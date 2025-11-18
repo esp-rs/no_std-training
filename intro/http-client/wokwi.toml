@@ -1,9 +1,0 @@
-[wokwi]
-version = 1
-# Exercise
-# firmware = "target/riscv32imc-unknown-none-elf/release/http_client"
-# elf = "target/riscv32imc-unknown-none-elf/release/http_client"
-
-# Solution
-firmware = 'target/riscv32imc-unknown-none-elf/release/examples/http-client'
-elf = 'target/riscv32imc-unknown-none-elf/release/examples/http-client'

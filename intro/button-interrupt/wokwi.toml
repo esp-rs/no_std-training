@@ -1,9 +1,0 @@
-[wokwi]
-version = 1
-# Exercise
-# firmware = "target/riscv32imc-unknown-none-elf/release/button_interrupt"
-# elf = "target/riscv32imc-unknown-none-elf/release/button_interrupt"
-
-# Solution
-firmware = 'target/riscv32imc-unknown-none-elf/release/examples/button-interrupt'
-elf = 'target/riscv32imc-unknown-none-elf/release/examples/button-interrupt'
