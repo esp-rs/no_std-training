@@ -18,6 +18,9 @@ env:
   CARGO_TERM_COLOR: always
   SSID: ""
   PASSWORD: ""
+  BROKER_HOST: ""
+  BROKER_PORT: ""
+  HOST_IP: ""
 
 jobs:
   projects:
