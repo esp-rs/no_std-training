@@ -26,7 +26,12 @@ jobs:
       fail-fast: false
       matrix:
         project:
-          ["project/part4", "project/part3", "project/part2", "project/part1"]
+          - "project/part1"
+          - "project/part2"
+          - "project/part3"
+          - "project/part4"
+          - "project/part5"
+          - "project/part6"
     steps:
       - uses: actions/checkout@v5
 
