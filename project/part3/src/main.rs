@@ -21,7 +21,10 @@ use embassy_sync::{channel::Channel, signal::Signal};
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
-use esp_hal::{clock::CpuClock, ram, rng::Rng, timer::timg::TimerGroup, interrupt::software::SoftwareInterruptControl};
+use esp_hal::{
+    clock::CpuClock, interrupt::software::SoftwareInterruptControl, ram, rng::Rng,
+    timer::timg::TimerGroup,
+};
 use esp_println::println;
 use esp_radio::{
     Controller,
@@ -57,8 +60,14 @@ static WIFI_CONNECTED: Signal<embassy_sync::blocking_mutex::raw::CriticalSection
 
 const GW_IP_ADDR_ENV: Option<&'static str> = option_env!("GATEWAY_IP");
 // HTML templates embedded at compile time
-const HOME_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/home.html"));
-const SAVED_HTML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/templates/saved.html"));
+const HOME_HTML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/templates/home.html"
+));
+const SAVED_HTML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/templates/saved.html"
+));
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -71,10 +80,7 @@ async fn main(spawner: Spawner) -> ! {
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(
-        timg0.timer0,
-        sw_int.software_interrupt0,
-    );
+    esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
 
     let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().unwrap());
 
@@ -156,17 +162,28 @@ struct WifiForm {
 }
 
 // Create router with picoserve
-fn make_app() -> picoserve::Router<impl picoserve::routing::PathRouter<(), picoserve::routing::NoPathParameters>, (), picoserve::routing::NoPathParameters> {
+fn make_app() -> picoserve::Router<
+    impl picoserve::routing::PathRouter<(), picoserve::routing::NoPathParameters>,
+    (),
+    picoserve::routing::NoPathParameters,
+> {
     picoserve::Router::new()
         .route("/", picoserve::routing::get(home_handler))
         .route("/save", picoserve::routing::post(save_handler))
         .route("/generate_204", picoserve::routing::get(captive_redirect))
         .route("/gen_204", picoserve::routing::get(captive_redirect))
         .route("/ncsi.txt", picoserve::routing::get(captive_redirect))
-        .route("/connecttest.txt", picoserve::routing::get(captive_redirect))
+        .route(
+            "/connecttest.txt",
+            picoserve::routing::get(captive_redirect),
+        )
 }
 
-async fn home_handler() -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
+async fn home_handler() -> (
+    picoserve::response::StatusCode,
+    &'static [(&'static str, &'static str)],
+    &'static str,
+) {
     (
         picoserve::response::StatusCode::OK,
         &[("Content-Type", "text/html; charset=utf-8")],
@@ -175,9 +192,16 @@ async fn home_handler() -> (picoserve::response::StatusCode, &'static [(&'static
 }
 
 async fn save_handler(
-    form: picoserve::extract::Form<WifiForm>
-) -> (picoserve::response::StatusCode, &'static [(&'static str, &'static str)], &'static str) {
-    println!("WiFi Credentials Received: SSID: {} | Password: {}", form.0.ssid, form.0.password);
+    form: picoserve::extract::Form<WifiForm>,
+) -> (
+    picoserve::response::StatusCode,
+    &'static [(&'static str, &'static str)],
+    &'static str,
+) {
+    println!(
+        "WiFi Credentials Received: SSID: {} | Password: {}",
+        form.0.ssid, form.0.password
+    );
 
     // Send credentials to the connection task
     let credentials = WifiCredentials {
@@ -210,7 +234,8 @@ async fn run_http_server(stack: Stack<'static>) {
         start_read_request: Some(EmbassyDuration::from_secs(5)),
         read_request: Some(EmbassyDuration::from_secs(5)),
         write: Some(EmbassyDuration::from_secs(3)),
-    }).keep_connection_alive();
+    })
+    .keep_connection_alive();
 
     loop {
         let mut rx_buffer = [0; 2048];

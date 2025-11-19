@@ -165,11 +165,22 @@ async fn main(spawner: Spawner) -> ! {
             println!("{}", core::str::from_utf8(&buf[..n]).unwrap());
         }
         // Read sensor
-        sht.start_measurement(PowerMode::NormalMode).await.unwrap();
+        if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
+            println!("Failed to start measurement: {:?}", e);
+            Timer::after(Duration::from_secs(1)).await;
+            continue;
+        }
         // Wait for 12.1 ms https://github.com/Fristi/shtcx-rs/blob/feature/async-support/src/asynchronous.rs#L413-L424
         let duration = max_measurement_duration(&sht, PowerMode::NormalMode);
         Timer::after(Duration::from_micros(duration.into())).await;
-        let measurement = sht.get_measurement_result().await.unwrap();
+        let measurement = match sht.get_measurement_result().await {
+            Ok(m) => m,
+            Err(e) => {
+                println!("Failed to get measurement result: {:?}", e);
+                Timer::after(Duration::from_secs(1)).await;
+                continue;
+            }
+        };
 
         println!(
             "  {:.2} °C | {:.2} %RH",
