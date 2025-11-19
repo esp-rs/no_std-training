@@ -67,16 +67,6 @@ use shtcx::{
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-// When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
-macro_rules! mk_static {
-    ($t:ty,$val:expr) => {{
-        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
-        #[deny(unused_attributes)]
-        let x = STATIC_CELL.uninit().write(($val));
-        x
-    }};
-}
-
 const BROKER_HOST: Option<&'static str> = option_env!("BROKER_HOST");
 const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
 const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
@@ -165,10 +155,11 @@ async fn main(spawner: Spawner) -> ! {
             .expect("Failed to get raw ID register")
     );
 
-    let esp_radio_ctrl = &*mk_static!(
-        Controller<'static>,
-        esp_radio::init().expect("Failed to initialize radio controller")
-    );
+    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
+        static_cell::StaticCell::new();
+    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL
+        .uninit()
+        .write(esp_radio::init().expect("Failed to initialize radio controller"));
 
     let (controller, interfaces) =
         esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default())
@@ -195,20 +186,28 @@ async fn main(spawner: Spawner) -> ! {
     // Init network stack for AP (provisioning)
     // Increased from 3 to 6 to accommodate: DHCP UDP socket, Captive Portal UDP socket,
     // HTTP TCP socket, and some buffer for concurrent connections
+    static AP_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> =
+        static_cell::StaticCell::new();
     let (ap_stack, ap_runner) = embassy_net::new(
         ap_device,
         ap_config,
-        mk_static!(StackResources<6>, StackResources::<6>::new()),
+        AP_STACK_RESOURCES_CELL
+            .uninit()
+            .write(StackResources::<6>::new()),
         seed,
     );
 
     // Init network stack for STA (client connection)
     // Increased from 3 to 6 to accommodate: MQTT TCP socket, HTTP client TCP socket,
     // and some buffer for concurrent connections
+    static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> =
+        static_cell::StaticCell::new();
     let (sta_stack, sta_runner) = embassy_net::new(
         sta_device,
         sta_config,
-        mk_static!(StackResources<6>, StackResources::<6>::new()),
+        STA_STACK_RESOURCES_CELL
+            .uninit()
+            .write(StackResources::<6>::new()),
         seed,
     );
 

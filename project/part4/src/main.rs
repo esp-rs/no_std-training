@@ -62,16 +62,6 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-// When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
-macro_rules! mk_static {
-    ($t:ty,$val:expr) => {{
-        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
-        #[deny(unused_attributes)]
-        let x = STATIC_CELL.uninit().write(($val));
-        x
-    }};
-}
-
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 const BROKER_HOST: Option<&'static str> = option_env!("BROKER_HOST");
@@ -120,7 +110,8 @@ async fn main(spawner: Spawner) -> ! {
             .expect("Failed to get raw ID register")
     );
 
-    let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().expect("Failed to initialize radio controller"));
+    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> = static_cell::StaticCell::new();
+    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL.uninit().write(esp_radio::init().expect("Failed to initialize radio controller"));
 
     let (controller, interfaces) =
         esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).expect("Failed to create WiFi controller");
@@ -133,10 +124,11 @@ async fn main(spawner: Spawner) -> ! {
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
     // Init network stack
+    static STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> = static_cell::StaticCell::new();
     let (stack, runner) = embassy_net::new(
         wifi_interface,
         config,
-        mk_static!(StackResources<3>, StackResources::<3>::new()),
+        STACK_RESOURCES_CELL.uninit().write(StackResources::<3>::new()),
         seed,
     );
     spawner.spawn(connection(controller)).ok();

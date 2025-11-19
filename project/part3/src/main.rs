@@ -33,16 +33,6 @@ use log::{debug, error, info};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-// When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
-macro_rules! mk_static {
-    ($t:ty,$val:expr) => {{
-        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
-        #[deny(unused_attributes)]
-        let x = STATIC_CELL.uninit().write(($val));
-        x
-    }};
-}
-
 #[derive(Clone, Debug)]
 struct WifiCredentials {
     ssid: heapless::String<32>,
@@ -82,7 +72,8 @@ async fn main(spawner: Spawner) -> ! {
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
 
-    let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().expect("Failed to initialize radio controller"));
+    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> = static_cell::StaticCell::new();
+    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL.uninit().write(esp_radio::init().expect("Failed to initialize radio controller"));
 
     let (controller, interfaces) =
         esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).expect("Failed to create WiFi controller");
@@ -108,18 +99,20 @@ async fn main(spawner: Spawner) -> ! {
     // Init network stack for AP (provisioning)
     // Increased from 3 to 6 to accommodate: DHCP UDP socket, Captive Portal UDP socket,
     // HTTP TCP socket, and some buffer for concurrent connections
+    static AP_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> = static_cell::StaticCell::new();
     let (ap_stack, ap_runner) = embassy_net::new(
         ap_device,
         ap_config,
-        mk_static!(StackResources<6>, StackResources::<6>::new()),
+        AP_STACK_RESOURCES_CELL.uninit().write(StackResources::<6>::new()),
         seed,
     );
 
     // Init network stack for STA (client connection)
+    static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> = static_cell::StaticCell::new();
     let (sta_stack, sta_runner) = embassy_net::new(
         sta_device,
         sta_config,
-        mk_static!(StackResources<3>, StackResources::<3>::new()),
+        STA_STACK_RESOURCES_CELL.uninit().write(StackResources::<3>::new()),
         seed,
     );
 
