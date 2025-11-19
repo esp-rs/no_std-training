@@ -45,7 +45,7 @@ async fn main(spawner: Spawner) -> ! {
     let sda = peripherals.GPIO10;
     let scl = peripherals.GPIO8;
     let i2c = I2c::new(peripherals.I2C0, Config::default())
-        .unwrap()
+        .expect("Failed to create I2C bus")
         .with_sda(sda)
         .with_scl(scl)
         .into_async();

@@ -72,8 +72,8 @@ async fn main(spawner: Spawner) -> ! {
 
     let sda = peripherals.GPIO10;
     let scl = peripherals.GPIO8;
-    let i2c = I2c::new(peripherals.I2C0, Config::default())
-        .unwrap()
+   let i2c = I2c::new(peripherals.I2C0, Config::default())
+        .expect("Failed to create I2C bus")
         .with_sda(sda)
         .with_scl(scl)
         .into_async();
@@ -86,10 +86,10 @@ async fn main(spawner: Spawner) -> ! {
             .expect("Failed to get raw ID register")
     );
 
-    let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().unwrap());
+    let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().expect("Failed to initialize radio controller"));
 
     let (controller, interfaces) =
-        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
+        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).expect("Failed to create WiFi controller");
 
     let wifi_interface = interfaces.sta;
 
@@ -162,7 +162,7 @@ async fn main(spawner: Spawner) -> ! {
                     break;
                 }
             };
-            info!("{}", core::str::from_utf8(&buf[..n]).unwrap());
+            info!("{}", core::str::from_utf8(&buf[..n]).expect("Failed to convert to UTF-8"));
         }
         // Read sensor
         if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
@@ -206,9 +206,9 @@ async fn connection(mut controller: WifiController<'static>) {
                     .with_ssid(SSID.into())
                     .with_password(PASSWORD.into()),
             );
-            controller.set_config(&client_config).unwrap();
+            controller.set_config(&client_config).expect("Failed to set WiFi configuration");
             debug!("Starting wifi");
-            controller.start_async().await.unwrap();
+            controller.start_async().await.expect("Failed to start WiFi");
             debug!("Wifi started!");
 
             debug!("Scan");
@@ -216,7 +216,7 @@ async fn connection(mut controller: WifiController<'static>) {
             let result = controller
                 .scan_with_config_async(scan_config)
                 .await
-                .unwrap();
+                .expect("Failed to scan for WiFi networks");
             for ap in result {
                 debug!("{:?}", ap);
             }

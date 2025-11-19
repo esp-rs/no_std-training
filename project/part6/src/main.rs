@@ -130,8 +130,8 @@ async fn main(spawner: Spawner) -> ! {
 
     let mut flash = FlashStorage::new(peripherals.FLASH);
     let mut buffer = [0u8; esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN];
-    let pt =
-        esp_bootloader_esp_idf::partitions::read_partition_table(&mut flash, &mut buffer).unwrap();
+    let pt = esp_bootloader_esp_idf::partitions::read_partition_table(&mut flash, &mut buffer)
+        .expect("Failed to read partition table");
     info!("Currently booted partition {:?}", pt.booted_partition());
 
     // Store flash storage in mutex for OTA updates
@@ -147,7 +147,7 @@ async fn main(spawner: Spawner) -> ! {
     let sda = peripherals.GPIO10;
     let scl = peripherals.GPIO8;
     let i2c = I2c::new(peripherals.I2C0, Config::default())
-        .unwrap()
+        .expect("Failed to create I2C bus")
         .with_sda(sda)
         .with_scl(scl)
         .into_async();
@@ -165,10 +165,14 @@ async fn main(spawner: Spawner) -> ! {
             .expect("Failed to get raw ID register")
     );
 
-    let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().unwrap());
+    let esp_radio_ctrl = &*mk_static!(
+        Controller<'static>,
+        esp_radio::init().expect("Failed to initialize radio controller")
+    );
 
     let (controller, interfaces) =
-        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
+        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default())
+            .expect("Failed to create WiFi controller");
 
     // Start with AP device for provisioning
     let ap_device = interfaces.ap;
@@ -547,7 +551,7 @@ async fn run_dhcp(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
             DEFAULT_SERVER_PORT,
         )))
         .await
-        .unwrap();
+        .expect("Failed to bind DHCP server");
 
     loop {
         _ = io::server::run(
@@ -610,9 +614,14 @@ async fn connection(
     // Start in AP mode first for provisioning
     let ap_config =
         ModeConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio".into()));
-    controller.set_config(&ap_config).unwrap();
+    controller
+        .set_config(&ap_config)
+        .expect("Failed to set WiFi configuration");
     debug!("Starting WiFi in AP mode");
-    controller.start_async().await.unwrap();
+    controller
+        .start_async()
+        .await
+        .expect("Failed to start WiFi");
     debug!("WiFi AP started!");
 
     // Wait for credentials
@@ -626,7 +635,7 @@ async fn connection(
 
     // Stop the AP
     debug!("Stopping AP mode...");
-    controller.stop_async().await.unwrap();
+    controller.stop_async().await.expect("Failed to stop WiFi");
     debug!("AP stopped");
 
     Timer::after(EmbassyDuration::from_secs(1)).await;
@@ -638,10 +647,15 @@ async fn connection(
         .with_password(credentials.password.as_str().into());
 
     let sta_config = ModeConfig::Client(client_config);
-    controller.set_config(&sta_config).unwrap();
+    controller
+        .set_config(&sta_config)
+        .expect("Failed to set station mode WiFi configuration");
 
     debug!("Starting WiFi in station mode...");
-    controller.start_async().await.unwrap();
+    controller
+        .start_async()
+        .await
+        .expect("Failed to start WiFi");
     debug!("WiFi station started!");
 
     // Connect to the network
