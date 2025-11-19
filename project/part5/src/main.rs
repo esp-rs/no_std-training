@@ -112,7 +112,7 @@ async fn main(spawner: Spawner) -> ! {
 
     let sda = peripherals.GPIO10;
     let scl = peripherals.GPIO8;
-   let i2c = I2c::new(peripherals.I2C0, Config::default())
+    let i2c = I2c::new(peripherals.I2C0, Config::default())
         .expect("Failed to create I2C bus")
         .with_sda(sda)
         .with_scl(scl)
@@ -126,11 +126,15 @@ async fn main(spawner: Spawner) -> ! {
             .expect("Failed to get raw ID register")
     );
 
-    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> = static_cell::StaticCell::new();
-    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL.uninit().write(esp_radio::init().expect("Failed to initialize radio controller"));
+    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
+        static_cell::StaticCell::new();
+    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL
+        .uninit()
+        .write(esp_radio::init().expect("Failed to initialize radio controller"));
 
     let (controller, interfaces) =
-        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).expect("Failed to create WiFi controller");
+        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default())
+            .expect("Failed to create WiFi controller");
 
     // Start with AP device for provisioning
     let ap_device = interfaces.ap;
@@ -153,20 +157,26 @@ async fn main(spawner: Spawner) -> ! {
     // Init network stack for AP (provisioning)
     // Increased from 3 to 6 to accommodate: DHCP UDP socket, Captive Portal UDP socket,
     // HTTP TCP socket, and some buffer for concurrent connections
-    static AP_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> = static_cell::StaticCell::new();
+    static AP_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> =
+        static_cell::StaticCell::new();
     let (ap_stack, ap_runner) = embassy_net::new(
         ap_device,
         ap_config,
-        AP_STACK_RESOURCES_CELL.uninit().write(StackResources::<6>::new()),
+        AP_STACK_RESOURCES_CELL
+            .uninit()
+            .write(StackResources::<6>::new()),
         seed,
     );
 
     // Init network stack for STA (client connection)
-    static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> = static_cell::StaticCell::new();
+    static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
+        static_cell::StaticCell::new();
     let (sta_stack, sta_runner) = embassy_net::new(
         sta_device,
         sta_config,
-        STA_STACK_RESOURCES_CELL.uninit().write(StackResources::<3>::new()),
+        STA_STACK_RESOURCES_CELL
+            .uninit()
+            .write(StackResources::<3>::new()),
         seed,
     );
 
@@ -388,9 +398,14 @@ async fn connection(mut controller: WifiController<'static>) {
     // Start in AP mode first for provisioning
     let ap_config =
         ModeConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio".into()));
-    controller.set_config(&ap_config).expect("Failed to set AP WiFi configuration");
+    controller
+        .set_config(&ap_config)
+        .expect("Failed to set AP WiFi configuration");
     info!("Starting WiFi in AP mode");
-    controller.start_async().await.expect("Failed to start WiFi");
+    controller
+        .start_async()
+        .await
+        .expect("Failed to start WiFi");
     debug!("WiFi AP started!");
 
     // Wait for credentials
@@ -416,10 +431,15 @@ async fn connection(mut controller: WifiController<'static>) {
         .with_password(credentials.password.as_str().into());
 
     let sta_config = ModeConfig::Client(client_config);
-    controller.set_config(&sta_config).expect("Failed to set station mode WiFi configuration");
+    controller
+        .set_config(&sta_config)
+        .expect("Failed to set station mode WiFi configuration");
 
     debug!("Starting WiFi in station mode...");
-   controller.start_async().await.expect("Failed to start WiFi");
+    controller
+        .start_async()
+        .await
+        .expect("Failed to start WiFi");
     debug!("WiFi station started!");
 
     // Connect to the network

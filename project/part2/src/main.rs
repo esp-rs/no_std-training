@@ -25,9 +25,7 @@ use esp_hal::{
 };
 use esp_radio::{
     Controller,
-    wifi::{
-        ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
-    },
+    wifi::{ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState},
 };
 use log::{debug, error, info};
 use shtcx::{
@@ -62,7 +60,7 @@ async fn main(spawner: Spawner) -> ! {
 
     let sda = peripherals.GPIO10;
     let scl = peripherals.GPIO8;
-   let i2c = I2c::new(peripherals.I2C0, Config::default())
+    let i2c = I2c::new(peripherals.I2C0, Config::default())
         .expect("Failed to create I2C bus")
         .with_sda(sda)
         .with_scl(scl)
@@ -76,11 +74,15 @@ async fn main(spawner: Spawner) -> ! {
             .expect("Failed to get raw ID register")
     );
 
-    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> = static_cell::StaticCell::new();
-    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL.uninit().write(esp_radio::init().expect("Failed to initialize radio controller"));
+    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
+        static_cell::StaticCell::new();
+    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL
+        .uninit()
+        .write(esp_radio::init().expect("Failed to initialize radio controller"));
 
     let (controller, interfaces) =
-        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).expect("Failed to create WiFi controller");
+        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default())
+            .expect("Failed to create WiFi controller");
 
     let wifi_interface = interfaces.sta;
 
@@ -90,11 +92,14 @@ async fn main(spawner: Spawner) -> ! {
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
     // Init network stack
-    static STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> = static_cell::StaticCell::new();
+    static STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
+        static_cell::StaticCell::new();
     let (stack, runner) = embassy_net::new(
         wifi_interface,
         config,
-        STACK_RESOURCES_CELL.uninit().write(StackResources::<3>::new()),
+        STACK_RESOURCES_CELL
+            .uninit()
+            .write(StackResources::<3>::new()),
         seed,
     );
     spawner.spawn(connection(controller)).ok();
@@ -154,7 +159,10 @@ async fn main(spawner: Spawner) -> ! {
                     break;
                 }
             };
-            info!("{}", core::str::from_utf8(&buf[..n]).expect("Failed to convert to UTF-8"));
+            info!(
+                "{}",
+                core::str::from_utf8(&buf[..n]).expect("Failed to convert to UTF-8")
+            );
         }
         // Read sensor
         if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
@@ -198,9 +206,14 @@ async fn connection(mut controller: WifiController<'static>) {
                     .with_ssid(SSID.into())
                     .with_password(PASSWORD.into()),
             );
-            controller.set_config(&client_config).expect("Failed to set WiFi configuration");
+            controller
+                .set_config(&client_config)
+                .expect("Failed to set WiFi configuration");
             debug!("Starting wifi");
-            controller.start_async().await.expect("Failed to start WiFi");
+            controller
+                .start_async()
+                .await
+                .expect("Failed to start WiFi");
             debug!("Wifi started!");
         }
         debug!("About to connect...");

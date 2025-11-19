@@ -236,7 +236,6 @@ checksum = "ecf08940bd331e29e33c324933b0fb43086dbbc043c38889cbd36fea9134922e"
 dependencies = [
  "domain",
  "edge-nal",
- "log",
 ]
 
 [[package]]

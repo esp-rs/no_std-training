@@ -15,7 +15,8 @@ use core::{net::Ipv4Addr, str::FromStr, time::Duration};
 use edge_captive::io::run;
 use embassy_executor::Spawner;
 use embassy_net::{
-    IpListenEndpoint, Ipv4Cidr, Runner, Stack, StackResources, StaticConfigV4, tcp::TcpSocket,
+    IpListenEndpoint, Ipv4Cidr, Runner, Stack, StackResources, StaticConfigV4, dns::DnsQueryType,
+    tcp::TcpSocket,
 };
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration as EmbassyDuration, Timer};
@@ -69,11 +70,15 @@ async fn main(spawner: Spawner) -> ! {
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
 
-    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> = static_cell::StaticCell::new();
-    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL.uninit().write(esp_radio::init().expect("Failed to initialize radio controller"));
+    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
+        static_cell::StaticCell::new();
+    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL
+        .uninit()
+        .write(esp_radio::init().expect("Failed to initialize radio controller"));
 
     let (controller, interfaces) =
-        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).expect("Failed to create WiFi controller");
+        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default())
+            .expect("Failed to create WiFi controller");
 
     // Start with AP device for provisioning
     let ap_device = interfaces.ap;
@@ -96,20 +101,26 @@ async fn main(spawner: Spawner) -> ! {
     // Init network stack for AP (provisioning)
     // Increased from 3 to 6 to accommodate: DHCP UDP socket, Captive Portal UDP socket,
     // HTTP TCP socket, and some buffer for concurrent connections
-    static AP_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> = static_cell::StaticCell::new();
+    static AP_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> =
+        static_cell::StaticCell::new();
     let (ap_stack, ap_runner) = embassy_net::new(
         ap_device,
         ap_config,
-        AP_STACK_RESOURCES_CELL.uninit().write(StackResources::<6>::new()),
+        AP_STACK_RESOURCES_CELL
+            .uninit()
+            .write(StackResources::<6>::new()),
         seed,
     );
 
     // Init network stack for STA (client connection)
-    static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> = static_cell::StaticCell::new();
+    static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
+        static_cell::StaticCell::new();
     let (sta_stack, sta_runner) = embassy_net::new(
         sta_device,
         sta_config,
-        STA_STACK_RESOURCES_CELL.uninit().write(StackResources::<3>::new()),
+        STA_STACK_RESOURCES_CELL
+            .uninit()
+            .write(StackResources::<3>::new()),
         seed,
     );
 
@@ -331,9 +342,14 @@ async fn connection(mut controller: WifiController<'static>) {
     // Start in AP mode first for provisioning
     let ap_config =
         ModeConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio".into()));
-    controller.set_config(&ap_config).expect("Failed to set AP WiFi configuration");
+    controller
+        .set_config(&ap_config)
+        .expect("Failed to set AP WiFi configuration");
     debug!("Starting WiFi in AP mode");
-    controller.start_async().await.expect("Failed to start WiFi");
+    controller
+        .start_async()
+        .await
+        .expect("Failed to start WiFi");
     debug!("WiFi AP started!");
 
     // Wait for credentials
@@ -359,10 +375,15 @@ async fn connection(mut controller: WifiController<'static>) {
         .with_password(credentials.password.as_str().into());
 
     let sta_config = ModeConfig::Client(client_config);
-    controller.set_config(&sta_config).expect("Failed to set station mode WiFi configuration");
+    controller
+        .set_config(&sta_config)
+        .expect("Failed to set station mode WiFi configuration");
 
     debug!("Starting WiFi in station mode...");
-   controller.start_async().await.expect("Failed to start WiFi");
+    controller
+        .start_async()
+        .await
+        .expect("Failed to start WiFi");
     debug!("WiFi station started!");
 
     // Connect to the network
@@ -412,10 +433,20 @@ async fn http_client_task(stack: Stack<'static>) {
         Timer::after(EmbassyDuration::from_millis(100)).await;
     }
 
-    if let Some(config) = stack.config_v4() {
-        debug!("HTTP Client: Got IP address: {:?}", config.address);
-        debug!("HTTP Client: Gateway: {:?}", config.gateway);
-        debug!("HTTP Client: DNS servers: {:?}", config.dns_servers);
+    // Wait for DNS servers to be configured
+    debug!("HTTP Client: Waiting for DNS servers to be configured...");
+    loop {
+        if let Some(config) = stack.config_v4() {
+            debug!("HTTP Client: Got IP address: {:?}", config.address);
+            debug!("HTTP Client: Gateway: {:?}", config.gateway);
+            debug!("HTTP Client: DNS servers: {:?}", config.dns_servers);
+
+            // Check if we have at least one DNS server
+            if !config.dns_servers.is_empty() {
+                break;
+            }
+        }
+        Timer::after(EmbassyDuration::from_millis(100)).await;
     }
 
     // Wait longer for the network to stabilize and routes to be established
@@ -435,12 +466,34 @@ async fn http_client_task(stack: Stack<'static>) {
         socket.set_timeout(Some(EmbassyDuration::from_secs(20)));
 
         // Connect to www.mobile-j.de
-        let remote_ip = Ipv4Addr::new(142, 250, 185, 115);
+        let host = "www.mobile-j.de";
         let remote_port = 80;
 
+        // Resolve hostname using DNS
+        debug!("HTTP Client: Resolving {}...", host);
+        let remote_ip = match stack.dns_query(host, DnsQueryType::A).await {
+            Ok(addresses) => {
+                if addresses.is_empty() {
+                    error!("HTTP Client: DNS query returned no addresses for {}", host);
+                    debug!("HTTP Client: Retrying in 10 seconds...");
+                    Timer::after(EmbassyDuration::from_secs(10)).await;
+                    continue;
+                }
+                let address = addresses[0];
+                debug!("HTTP Client: Resolved {} to {}", host, address);
+                address
+            }
+            Err(e) => {
+                error!("HTTP Client: DNS lookup failed for {}: {:?}", host, e);
+                debug!("HTTP Client: Retrying in 10 seconds...");
+                Timer::after(EmbassyDuration::from_secs(10)).await;
+                continue;
+            }
+        };
+
         debug!(
-            "HTTP Client: Connecting to www.mobile-j.de ({}:{})...",
-            remote_ip, remote_port
+            "HTTP Client: Connecting to {} ({}:{})...",
+            host, remote_ip, remote_port
         );
 
         match socket.connect((remote_ip, remote_port)).await {
@@ -475,15 +528,15 @@ async fn http_client_task(stack: Stack<'static>) {
                                 };
 
                                 if first_chunk {
-                                    debug!("HTTP Client: Response received:");
-                                    debug!("{}", response_chunk);
+                                    info!("HTTP Client: Response received:");
+                                    info!("{}", response_chunk);
                                     first_chunk = false;
                                 } else {
-                                    debug!("{}", response_chunk);
+                                    info!("{}", response_chunk);
                                 }
 
                                 if total_read > 2048 {
-                                    debug!("... (truncated, received {} bytes)", total_read);
+                                    info!("... (truncated, received {} bytes)", total_read);
                                     break;
                                 }
                             }
@@ -494,7 +547,7 @@ async fn http_client_task(stack: Stack<'static>) {
                         }
                     }
 
-                    debug!(
+                    info!(
                         "HTTP Client: Response complete ({} bytes total)",
                         total_read
                     );
