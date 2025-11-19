@@ -17,7 +17,7 @@ use embassy_executor::Spawner;
 use embassy_net::{
     IpListenEndpoint, Ipv4Cidr, Runner, Stack, StackResources, StaticConfigV4, tcp::TcpSocket,
 };
-use embassy_sync::{channel::Channel, signal::Signal};
+use embassy_sync::channel::Channel;
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
@@ -44,9 +44,6 @@ static WIFI_CREDENTIALS_CHANNEL: Channel<
     WifiCredentials,
     1,
 > = Channel::new();
-
-static WIFI_CONNECTED: Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()> =
-    Signal::new();
 
 const GW_IP_ADDR_ENV: Option<&'static str> = option_env!("GATEWAY_IP");
 // HTML templates embedded at compile time
@@ -385,8 +382,6 @@ async fn connection(mut controller: WifiController<'static>) {
         match controller.connect_async().await {
             Ok(()) => {
                 debug!("Successfully connected to WiFi!");
-                // Signal that WiFi is connected
-                WIFI_CONNECTED.signal(());
 
                 // Wait for disconnect event
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
@@ -416,9 +411,9 @@ async fn http_client_task(stack: Stack<'static>) {
     use embedded_io_async::Write;
 
     // Wait for WiFi connection
-    debug!("HTTP Client: Waiting for WiFi connection...");
-    WIFI_CONNECTED.wait().await;
-    debug!("HTTP Client: WiFi connected, waiting for network configuration...");
+    debug!("HTTP Client: Waiting for WiFi link to come up...");
+    stack.wait_link_up().await;
+    debug!("HTTP Client: WiFi link up, waiting for network configuration...");
 
     // Wait for DHCP to assign an IP address
     loop {

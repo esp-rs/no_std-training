@@ -83,9 +83,6 @@ static WIFI_CREDENTIALS_CHANNEL: Channel<
     1,
 > = Channel::new();
 
-static WIFI_CONNECTED: Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()> =
-    Signal::new();
-
 static BUTTON_PRESSED: Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()> =
     Signal::new();
 
@@ -215,7 +212,6 @@ async fn main(spawner: Spawner) -> ! {
         .spawn(connection(
             controller,
             &WIFI_CREDENTIALS_CHANNEL,
-            &WIFI_CONNECTED,
         ))
         .ok();
     spawner.spawn(net_task(ap_runner)).ok();
@@ -225,7 +221,7 @@ async fn main(spawner: Spawner) -> ! {
     // MQTT and HTTP client tasks run concurrently - MQTT continues publishing
     // sensor data while HTTP client waits for button press to trigger OTA update
     spawner
-        .spawn(mqtt_task(sta_stack, sht, &WIFI_CONNECTED))
+        .spawn(mqtt_task(sta_stack, sht))
         .ok();
     spawner.spawn(button_monitor(button, &BUTTON_PRESSED)).ok();
     spawner
@@ -605,7 +601,6 @@ async fn connection(
         WifiCredentials,
         1,
     >,
-    wifi_connected: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
 ) {
     debug!("start connection task");
     debug!("Device capabilities: {:?}", controller.capabilities());
@@ -663,8 +658,6 @@ async fn connection(
         match controller.connect_async().await {
             Ok(()) => {
                 debug!("Successfully connected to WiFi!");
-                // Signal that WiFi is connected
-                wifi_connected.signal(());
 
                 // Wait for disconnect event
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
@@ -693,12 +686,11 @@ async fn sta_net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 async fn mqtt_task(
     stack: Stack<'static>,
     mut sht: ShtC3<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>,
-    wifi_connected: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
 ) {
     // Wait for WiFi connection
-    debug!("MQTT: Waiting for WiFi connection...");
-    wifi_connected.wait().await;
-    debug!("MQTT: WiFi connected signal received, waiting for network configuration...");
+    debug!("MQTT: Waiting for WiFi link to come up...");
+    stack.wait_link_up().await;
+    debug!("MQTT: WiFi link up, waiting for network configuration...");
 
     // Wait for DHCP to assign an IP address
     debug!("MQTT: Waiting for network configuration...");
