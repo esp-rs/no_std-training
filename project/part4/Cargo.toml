@@ -45,10 +45,7 @@ static_cell      = "2.1.1"
 opt-level = "s"
 
 [profile.release]
-codegen-units    = 1     # LLVM can perform better optimizations using a single thread
-debug            = 2
-debug-assertions = false
-incremental      = false
-lto              = 'fat'
-opt-level        = 's'
-overflow-checks  = false
+codegen-units = 1     # LLVM can perform better optimizations using a single thread
+debug         = 2
+lto           = 'fat'
+opt-level     = 's'
