@@ -42,7 +42,13 @@ jobs:
         with:
           target: riscv32imc-unknown-none-elf
           toolchain: nightly
-          components: rust-src
+          components: rust-src, rustfmt, clippy
 
       - run: cargo build --release
+        working-directory: ${{ matrix.project }}
+
+      - run: cargo fmt --all -- --check
+        working-directory: ${{ matrix.project }}
+
+      - run: cargo clippy -- -D warnings
         working-directory: ${{ matrix.project }}
