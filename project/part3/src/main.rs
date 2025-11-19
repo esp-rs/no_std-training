@@ -85,7 +85,7 @@ async fn main(spawner: Spawner) -> ! {
     let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().unwrap());
 
     let (controller, interfaces) =
-        esp_radio::wifi::new(&esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
+        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
 
     // Start with AP device for provisioning
     let ap_device = interfaces.ap;

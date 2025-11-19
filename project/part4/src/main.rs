@@ -123,7 +123,7 @@ async fn main(spawner: Spawner) -> ! {
     let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().unwrap());
 
     let (controller, interfaces) =
-        esp_radio::wifi::new(&esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
+        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
 
     let wifi_interface = interfaces.sta;
 
@@ -307,13 +307,10 @@ async fn connection(mut controller: WifiController<'static>) {
     debug!("start connection task");
     debug!("Device capabilities: {:?}", controller.capabilities());
     loop {
-        match esp_radio::wifi::sta_state() {
-            WifiStaState::Connected => {
-                // wait until we're no longer connected
-                controller.wait_for_event(WifiEvent::StaDisconnected).await;
-                Timer::after(Duration::from_millis(5000)).await
-            }
-            _ => {}
+        if esp_radio::wifi::sta_state() == WifiStaState::Connected {
+            // wait until we're no longer connected
+            controller.wait_for_event(WifiEvent::StaDisconnected).await;
+            Timer::after(Duration::from_millis(5000)).await;
         }
         if !matches!(controller.is_started(), Ok(true)) {
             let client_config = ModeConfig::Client(
