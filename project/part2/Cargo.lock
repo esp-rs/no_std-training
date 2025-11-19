@@ -1048,6 +1048,7 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
+ "log",
  "shtcx",
  "static_cell",
 ]

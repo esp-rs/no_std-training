@@ -17,7 +17,7 @@ use esp_hal::{
     i2c::master::{Config, I2c},
     timer::timg::TimerGroup,
 };
-use esp_println::println;
+use log::{debug, error, info};
 use shtcx::{
     self,
     asynchronous::{PowerMode, max_measurement_duration, shtc3},
@@ -51,7 +51,7 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let mut sht = shtc3(i2c);
 
-    println!(
+    debug!(
         "Raw ID register: {}",
         sht.raw_id_register()
             .await
@@ -64,7 +64,7 @@ async fn main(spawner: Spawner) -> ! {
     loop {
         // Read sensor
         if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
-            println!("Failed to start measurement: {:?}", e);
+            error!("Failed to start measurement: {:?}", e);
             Timer::after(Duration::from_secs(1)).await;
             continue;
         }
@@ -74,13 +74,13 @@ async fn main(spawner: Spawner) -> ! {
         let measurement = match sht.get_measurement_result().await {
             Ok(m) => m,
             Err(e) => {
-                println!("Failed to get measurement result: {:?}", e);
+                error!("Failed to get measurement result: {:?}", e);
                 Timer::after(Duration::from_secs(1)).await;
                 continue;
             }
         };
 
-        println!(
+        info!(
             "  {:.2} °C | {:.2} %RH",
             measurement.temperature.as_degrees_celsius(),
             measurement.humidity.as_percent(),

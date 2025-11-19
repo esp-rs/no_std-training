@@ -25,11 +25,11 @@ use esp_hal::{
     clock::CpuClock, interrupt::software::SoftwareInterruptControl, ram, rng::Rng,
     timer::timg::TimerGroup,
 };
-use esp_println::println;
 use esp_radio::{
     Controller,
     wifi::{AccessPointConfig, ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent},
 };
+use log::{debug, error, info};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -136,15 +136,15 @@ async fn main(spawner: Spawner) -> ! {
         }
         Timer::after(EmbassyDuration::from_millis(500)).await;
     }
-    println!("WiFi Provisioning Portal Ready");
-    println!("1. Connect to the AP: `esp-radio`");
-    println!("2. Navigate to: http://{gw_ip_addr_str}/");
+    info!("WiFi Provisioning Portal Ready");
+    debug!("1. Connect to the AP: `esp-radio`");
+    debug!("2. Navigate to: http://{gw_ip_addr_str}/");
     while !ap_stack.is_config_up() {
         Timer::after(EmbassyDuration::from_millis(100)).await
     }
     ap_stack
         .config_v4()
-        .inspect(|c| println!("ipv4 config: {c:?}"));
+        .inspect(|c| debug!("ipv4 config: {c:?}"));
 
     spawner.spawn(run_http_server(ap_stack)).ok();
 
@@ -198,7 +198,7 @@ async fn save_handler(
     &'static [(&'static str, &'static str)],
     &'static str,
 ) {
-    println!(
+    debug!(
         "WiFi Credentials Received: SSID: {} | Password: {}",
         form.0.ssid, form.0.password
     );
@@ -208,9 +208,9 @@ async fn save_handler(
         ssid: form.0.ssid,
         password: form.0.password,
     };
-    println!("Sending credentials to connection task...");
+    debug!("Sending credentials to connection task...");
     WIFI_CREDENTIALS_CHANNEL.sender().send(credentials).await;
-    println!("Credentials sent!");
+    debug!("Credentials sent!");
 
     (
         picoserve::response::StatusCode::OK,
@@ -228,7 +228,7 @@ async fn run_http_server(stack: Stack<'static>) {
     let app = make_app();
 
     const HTTP_PORT: u16 = 80;
-    println!("Starting HTTP server on port {HTTP_PORT}");
+    info!("Starting HTTP server on port {HTTP_PORT}");
 
     let config = picoserve::Config::new(picoserve::Timeouts {
         start_read_request: Some(EmbassyDuration::from_secs(5)),
@@ -245,7 +245,7 @@ async fn run_http_server(stack: Stack<'static>) {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(EmbassyDuration::from_secs(10)));
 
-        println!("HTTP: Waiting for connection...");
+        debug!("HTTP: Waiting for connection...");
         let result = socket
             .accept(IpListenEndpoint {
                 addr: None,
@@ -254,19 +254,19 @@ async fn run_http_server(stack: Stack<'static>) {
             .await;
 
         if let Err(e) = result {
-            println!("HTTP accept error: {:?}", e);
+            error!("HTTP accept error: {:?}", e);
             Timer::after(EmbassyDuration::from_millis(100)).await;
             continue;
         }
 
-        println!("HTTP: Client connected");
+        debug!("HTTP: Client connected");
 
         match picoserve::serve(&app, &config, &mut http_buffer, socket).await {
             Ok(handled_requests_count) => {
-                println!("HTTP: Handled {} requests", handled_requests_count);
+                debug!("HTTP: Handled {} requests", handled_requests_count);
             }
             Err(e) => {
-                println!("HTTP error: {:?}", e);
+                error!("HTTP error: {:?}", e);
             }
         }
 
@@ -322,14 +322,14 @@ async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     let mut tx_buf = [0u8; 1500];
     let mut rx_buf = [0u8; 1500];
 
-    println!("Starting Captive Portal DNS server on port {DNS_PORT}");
-    println!("All DNS queries will resolve to {gw_ip_addr}");
+    debug!("Starting Captive Portal DNS server on port {DNS_PORT}");
+    debug!("All DNS queries will resolve to {gw_ip_addr}");
 
     let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
     let udp_stack = Udp::new(stack, &buffers);
 
     loop {
-        println!("Starting Captive Portal DNS server");
+        debug!("Starting Captive Portal DNS server");
         _ = run(
             &udp_stack,
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DNS_PORT)),
@@ -346,35 +346,35 @@ async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
 
 #[embassy_executor::task]
 async fn connection(mut controller: WifiController<'static>) {
-    println!("start connection task");
-    println!("Device capabilities: {:?}", controller.capabilities());
+    debug!("start connection task");
+    debug!("Device capabilities: {:?}", controller.capabilities());
 
     // Start in AP mode first for provisioning
     let ap_config =
         ModeConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio".into()));
     controller.set_config(&ap_config).unwrap();
-    println!("Starting WiFi in AP mode");
+    debug!("Starting WiFi in AP mode");
     controller.start_async().await.unwrap();
-    println!("WiFi AP started!");
+    debug!("WiFi AP started!");
 
     // Wait for credentials
-    println!("Waiting for WiFi credentials...");
+    debug!("Waiting for WiFi credentials...");
     let credentials = WIFI_CREDENTIALS_CHANNEL.receiver().receive().await;
-    println!("Credentials received! SSID: {}", credentials.ssid);
+    info!("Credentials received! SSID: {}", credentials.ssid);
 
     // Give the HTTP handler time to send the saved page before dropping AP
-    println!("Delaying AP shutdown to allow HTTP response to complete...");
+    debug!("Delaying AP shutdown to allow HTTP response to complete...");
     Timer::after(EmbassyDuration::from_secs(2)).await;
 
     // Stop the AP
-    println!("Stopping AP mode...");
+    debug!("Stopping AP mode...");
     controller.stop_async().await.unwrap();
-    println!("AP stopped");
+    debug!("AP stopped");
 
     Timer::after(EmbassyDuration::from_secs(1)).await;
 
     // Configure and start station mode
-    println!("Configuring station mode...");
+    debug!("Configuring station mode...");
     let client_config = ClientConfig::default()
         .with_ssid(credentials.ssid.as_str().into())
         .with_password(credentials.password.as_str().into());
@@ -382,26 +382,26 @@ async fn connection(mut controller: WifiController<'static>) {
     let sta_config = ModeConfig::Client(client_config);
     controller.set_config(&sta_config).unwrap();
 
-    println!("Starting WiFi in station mode...");
+    debug!("Starting WiFi in station mode...");
     controller.start_async().await.unwrap();
-    println!("WiFi station started!");
+    debug!("WiFi station started!");
 
     // Connect to the network
-    println!("Connecting to WiFi network...");
+    debug!("Connecting to WiFi network...");
     loop {
         match controller.connect_async().await {
             Ok(()) => {
-                println!("Successfully connected to WiFi!");
+                debug!("Successfully connected to WiFi!");
                 // Signal that WiFi is connected
                 WIFI_CONNECTED.signal(());
 
                 // Wait for disconnect event
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
-                println!("Disconnected from WiFi, will attempt to reconnect...");
+                debug!("Disconnected from WiFi, will attempt to reconnect...");
             }
             Err(e) => {
-                println!("Failed to connect: {:?}", e);
-                println!("Retrying in 5 seconds...");
+                error!("Failed to connect: {:?}", e);
+                debug!("Retrying in 5 seconds...");
                 Timer::after(EmbassyDuration::from_secs(5)).await;
             }
         }
@@ -423,9 +423,9 @@ async fn http_client_task(stack: Stack<'static>) {
     use embedded_io_async::Write;
 
     // Wait for WiFi connection
-    println!("HTTP Client: Waiting for WiFi connection...");
+    debug!("HTTP Client: Waiting for WiFi connection...");
     WIFI_CONNECTED.wait().await;
-    println!("HTTP Client: WiFi connected, waiting for network configuration...");
+    debug!("HTTP Client: WiFi connected, waiting for network configuration...");
 
     // Wait for DHCP to assign an IP address
     loop {
@@ -436,23 +436,23 @@ async fn http_client_task(stack: Stack<'static>) {
     }
 
     if let Some(config) = stack.config_v4() {
-        println!("HTTP Client: Got IP address: {:?}", config.address);
-        println!("HTTP Client: Gateway: {:?}", config.gateway);
-        println!("HTTP Client: DNS servers: {:?}", config.dns_servers);
+        debug!("HTTP Client: Got IP address: {:?}", config.address);
+        debug!("HTTP Client: Gateway: {:?}", config.gateway);
+        debug!("HTTP Client: DNS servers: {:?}", config.dns_servers);
     }
 
     // Wait longer for the network to stabilize and routes to be established
-    println!("HTTP Client: Waiting for network to stabilize...");
+    debug!("HTTP Client: Waiting for network to stabilize...");
     Timer::after(EmbassyDuration::from_secs(5)).await;
 
-    println!("HTTP Client: Starting HTTP request...");
+    debug!("HTTP Client: Starting HTTP request...");
 
     // Prepare buffers for TCP socket
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
     loop {
-        println!("Making HTTP request");
+        debug!("Making HTTP request");
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(EmbassyDuration::from_secs(20)));
@@ -461,24 +461,24 @@ async fn http_client_task(stack: Stack<'static>) {
         let remote_ip = Ipv4Addr::new(142, 250, 185, 115);
         let remote_port = 80;
 
-        println!(
+        debug!(
             "HTTP Client: Connecting to www.mobile-j.de ({}:{})...",
             remote_ip, remote_port
         );
 
         match socket.connect((remote_ip, remote_port)).await {
             Ok(()) => {
-                println!("HTTP Client: Connected!");
+                debug!("HTTP Client: Connected!");
 
                 // Send HTTP/1.0 request
                 let http_request = b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n";
 
                 if let Err(e) = socket.write_all(http_request).await {
-                    println!("HTTP Client: Write error: {:?}", e);
+                    error!("HTTP Client: Write error: {:?}", e);
                 } else if let Err(e) = socket.flush().await {
-                    println!("HTTP Client: Flush error: {:?}", e);
+                    error!("HTTP Client: Flush error: {:?}", e);
                 } else {
-                    println!("HTTP Client: Request sent, reading response...");
+                    debug!("HTTP Client: Request sent, reading response...");
 
                     // Read response
                     let mut response_buffer = [0u8; 512];
@@ -488,7 +488,7 @@ async fn http_client_task(stack: Stack<'static>) {
                     loop {
                         match socket.read(&mut response_buffer).await {
                             Ok(0) => {
-                                println!("HTTP Client: Connection closed by server");
+                                debug!("HTTP Client: Connection closed by server");
                                 break;
                             }
                             Ok(n) => {
@@ -498,26 +498,26 @@ async fn http_client_task(stack: Stack<'static>) {
                                 };
 
                                 if first_chunk {
-                                    println!("HTTP Client: Response received:");
-                                    println!("{}", response_chunk);
+                                    debug!("HTTP Client: Response received:");
+                                    debug!("{}", response_chunk);
                                     first_chunk = false;
                                 } else {
-                                    println!("{}", response_chunk);
+                                    debug!("{}", response_chunk);
                                 }
 
                                 if total_read > 2048 {
-                                    println!("... (truncated, received {} bytes)", total_read);
+                                    debug!("... (truncated, received {} bytes)", total_read);
                                     break;
                                 }
                             }
                             Err(e) => {
-                                println!("HTTP Client: Read error: {:?}", e);
+                                error!("HTTP Client: Read error: {:?}", e);
                                 break;
                             }
                         }
                     }
 
-                    println!(
+                    debug!(
                         "HTTP Client: Response complete ({} bytes total)",
                         total_read
                     );
@@ -526,12 +526,12 @@ async fn http_client_task(stack: Stack<'static>) {
                 socket.close();
 
                 // Success! Wait before next request
-                println!("HTTP Client: Waiting 30 seconds before next request...");
+                debug!("HTTP Client: Waiting 30 seconds before next request...");
                 Timer::after(EmbassyDuration::from_secs(30)).await;
             }
             Err(e) => {
-                println!("HTTP Client: Connection failed: {:?}", e);
-                println!("HTTP Client: Retrying in 10 seconds...");
+                error!("HTTP Client: Connection failed: {:?}", e);
+                debug!("HTTP Client: Retrying in 10 seconds...");
                 Timer::after(EmbassyDuration::from_secs(10)).await;
             }
         }

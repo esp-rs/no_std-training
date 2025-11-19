@@ -40,13 +40,12 @@ use esp_hal::{
     rng::Rng,
     timer::timg::TimerGroup,
 };
-use esp_println::println;
 use esp_radio::{
     Controller,
     wifi::{AccessPointConfig, ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent},
 };
 use heapless::String;
-use log::{error, info};
+use log::{debug, error, info};
 use rust_mqtt::{
     client::{client::MqttClient, client_config::ClientConfig as MqttClientConfig},
     packet::v5::reason_codes::ReasonCode,
@@ -133,7 +132,7 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let mut sht = shtc3(i2c);
 
-    println!(
+    debug!(
         "Raw ID register: {}",
         sht.raw_id_register()
             .await
@@ -194,15 +193,15 @@ async fn main(spawner: Spawner) -> ! {
         }
         Timer::after(EmbassyDuration::from_millis(500)).await;
     }
-    println!("WiFi Provisioning Portal Ready");
-    println!("1. Connect to the AP: `esp-radio`");
-    println!("2. Navigate to: http://{gw_ip_addr_str}/");
+    info!("WiFi Provisioning Portal Ready");
+    debug!("1. Connect to the AP: `esp-radio`");
+    debug!("2. Navigate to: http://{gw_ip_addr_str}/");
     while !ap_stack.is_config_up() {
         Timer::after(EmbassyDuration::from_millis(100)).await
     }
     ap_stack
         .config_v4()
-        .inspect(|c| println!("ipv4 config: {c:?}"));
+        .inspect(|c| debug!("ipv4 config: {c:?}"));
 
     spawner.spawn(run_http_server(ap_stack)).ok();
 
@@ -256,7 +255,7 @@ async fn save_handler(
     &'static [(&'static str, &'static str)],
     &'static str,
 ) {
-    println!(
+    debug!(
         "WiFi Credentials Received: SSID: {} | Password: {}",
         form.0.ssid, form.0.password
     );
@@ -266,9 +265,9 @@ async fn save_handler(
         ssid: form.0.ssid,
         password: form.0.password,
     };
-    println!("Sending credentials to connection task...");
+    debug!("Sending credentials to connection task...");
     WIFI_CREDENTIALS_CHANNEL.sender().send(credentials).await;
-    println!("Credentials sent!");
+    debug!("Credentials sent!");
 
     (
         picoserve::response::StatusCode::OK,
@@ -286,7 +285,7 @@ async fn run_http_server(stack: Stack<'static>) {
     let app = make_app();
 
     const HTTP_PORT: u16 = 80;
-    println!("Starting HTTP server on port {HTTP_PORT}");
+    info!("Starting HTTP server on port {HTTP_PORT}");
 
     let config = picoserve::Config::new(picoserve::Timeouts {
         start_read_request: Some(EmbassyDuration::from_secs(5)),
@@ -303,7 +302,7 @@ async fn run_http_server(stack: Stack<'static>) {
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(EmbassyDuration::from_secs(10)));
 
-        println!("HTTP: Waiting for connection...");
+        debug!("HTTP: Waiting for connection...");
         let result = socket
             .accept(IpListenEndpoint {
                 addr: None,
@@ -312,19 +311,19 @@ async fn run_http_server(stack: Stack<'static>) {
             .await;
 
         if let Err(e) = result {
-            println!("HTTP accept error: {:?}", e);
+            error!("HTTP accept error: {:?}", e);
             Timer::after(EmbassyDuration::from_millis(100)).await;
             continue;
         }
 
-        println!("HTTP: Client connected");
+        debug!("HTTP: Client connected");
 
         match picoserve::serve(&app, &config, &mut http_buffer, socket).await {
             Ok(handled_requests_count) => {
-                println!("HTTP: Handled {} requests", handled_requests_count);
+                debug!("HTTP: Handled {} requests", handled_requests_count);
             }
             Err(e) => {
-                println!("HTTP error: {:?}", e);
+                error!("HTTP error: {:?}", e);
             }
         }
 
@@ -380,14 +379,14 @@ async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     let mut tx_buf = [0u8; 1500];
     let mut rx_buf = [0u8; 1500];
 
-    println!("Starting Captive Portal DNS server on port {DNS_PORT}");
-    println!("All DNS queries will resolve to {gw_ip_addr}");
+    info!("Starting Captive Portal DNS server on port {DNS_PORT}");
+    debug!("All DNS queries will resolve to {gw_ip_addr}");
 
     let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
     let udp_stack = Udp::new(stack, &buffers);
 
     loop {
-        println!("Starting Captive Portal DNS server");
+        debug!("Starting Captive Portal DNS server");
         _ = run(
             &udp_stack,
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DNS_PORT)),
@@ -404,35 +403,35 @@ async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
 
 #[embassy_executor::task]
 async fn connection(mut controller: WifiController<'static>) {
-    println!("start connection task");
-    println!("Device capabilities: {:?}", controller.capabilities());
+    debug!("start connection task");
+    debug!("Device capabilities: {:?}", controller.capabilities());
 
     // Start in AP mode first for provisioning
     let ap_config =
         ModeConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio".into()));
     controller.set_config(&ap_config).unwrap();
-    println!("Starting WiFi in AP mode");
+    info!("Starting WiFi in AP mode");
     controller.start_async().await.unwrap();
-    println!("WiFi AP started!");
+    debug!("WiFi AP started!");
 
     // Wait for credentials
-    println!("Waiting for WiFi credentials...");
+    debug!("Waiting for WiFi credentials...");
     let credentials = WIFI_CREDENTIALS_CHANNEL.receiver().receive().await;
-    println!("Credentials received! SSID: {}", credentials.ssid);
+    info!("Credentials received! SSID: {}", credentials.ssid);
 
     // Give the HTTP handler time to send the saved page before dropping AP
-    println!("Delaying AP shutdown to allow HTTP response to complete...");
+    debug!("Delaying AP shutdown to allow HTTP response to complete...");
     Timer::after(EmbassyDuration::from_secs(2)).await;
 
     // Stop the AP
-    println!("Stopping AP mode...");
+    debug!("Stopping AP mode...");
     controller.stop_async().await.unwrap();
-    println!("AP stopped");
+    debug!("AP stopped");
 
     Timer::after(EmbassyDuration::from_secs(1)).await;
 
     // Configure and start station mode
-    println!("Configuring station mode...");
+    debug!("Configuring station mode...");
     let client_config = ClientConfig::default()
         .with_ssid(credentials.ssid.as_str().into())
         .with_password(credentials.password.as_str().into());
@@ -440,26 +439,26 @@ async fn connection(mut controller: WifiController<'static>) {
     let sta_config = ModeConfig::Client(client_config);
     controller.set_config(&sta_config).unwrap();
 
-    println!("Starting WiFi in station mode...");
+    debug!("Starting WiFi in station mode...");
     controller.start_async().await.unwrap();
-    println!("WiFi station started!");
+    debug!("WiFi station started!");
 
     // Connect to the network
-    println!("Connecting to WiFi network...");
+    debug!("Connecting to WiFi network...");
     loop {
         match controller.connect_async().await {
             Ok(()) => {
-                println!("Successfully connected to WiFi!");
+                debug!("Successfully connected to WiFi!");
                 // Signal that WiFi is connected
                 WIFI_CONNECTED.signal(());
 
                 // Wait for disconnect event
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
-                println!("Disconnected from WiFi, will attempt to reconnect...");
+                debug!("Disconnected from WiFi, will attempt to reconnect...");
             }
             Err(e) => {
-                println!("Failed to connect: {:?}", e);
-                println!("Retrying in 5 seconds...");
+                error!("Failed to connect: {:?}", e);
+                debug!("Retrying in 5 seconds...");
                 Timer::after(EmbassyDuration::from_secs(5)).await;
             }
         }
@@ -482,9 +481,9 @@ async fn mqtt_task(
     mut sht: ShtC3<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>,
 ) {
     // Wait for WiFi connection
-    println!("HTTP Client: Waiting for WiFi connection...");
+    debug!("HTTP Client: Waiting for WiFi connection...");
     WIFI_CONNECTED.wait().await;
-    println!("HTTP Client: WiFi connected, waiting for network configuration...");
+    debug!("HTTP Client: WiFi connected, waiting for network configuration...");
 
     // Wait for DHCP to assign an IP address
     loop {
@@ -494,10 +493,10 @@ async fn mqtt_task(
         Timer::after(EmbassyDuration::from_millis(100)).await;
     }
 
-    println!("Waiting to get IP address...");
+    debug!("Waiting to get IP address...");
     loop {
         if let Some(config) = stack.config_v4() {
-            println!("Got IP: {}", config.address);
+            debug!("Got IP: {}", config.address);
             break;
         }
         Timer::after(EmbassyDuration::from_millis(500)).await;
@@ -588,23 +587,23 @@ async fn mqtt_task(
         loop {
             // Read sensor
             if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
-                println!("Failed to start measurement: {:?}", e);
-                Timer::after(Duration::from_secs(1)).await;
+                error!("Failed to start measurement: {:?}", e);
+                Timer::after(EmbassyDuration::from_secs(1)).await;
                 continue;
             }
             // Wait for 12.1 ms https://github.com/Fristi/shtcx-rs/blob/feature/async-support/src/asynchronous.rs#L413-L424
             let duration = max_measurement_duration(&sht, PowerMode::NormalMode);
-            Timer::after(Duration::from_micros(duration.into())).await;
+            Timer::after(EmbassyDuration::from_micros(duration.into())).await;
             let measurement = match sht.get_measurement_result().await {
                 Ok(m) => m,
                 Err(e) => {
-                    println!("Failed to get measurement result: {:?}", e);
-                    Timer::after(Duration::from_secs(1)).await;
+                    error!("Failed to get measurement result: {:?}", e);
+                    Timer::after(EmbassyDuration::from_secs(1)).await;
                     continue;
                 }
             };
 
-            println!(
+            info!(
                 "  {:.2} °C | {:.2} %RH",
                 measurement.temperature.as_degrees_celsius(),
                 measurement.humidity.as_percent(),

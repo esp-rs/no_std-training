@@ -48,14 +48,13 @@ use esp_hal::{
     rng::Rng,
     timer::timg::TimerGroup,
 };
-use esp_println::println;
 use esp_radio::{
     Controller,
     wifi::{AccessPointConfig, ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent},
 };
 use esp_storage::FlashStorage;
 use heapless::String;
-use log::{error, info};
+use log::{debug, error, info};
 use rust_mqtt::{
     client::{client::MqttClient, client_config::ClientConfig as MqttClientConfig},
     packet::v5::reason_codes::ReasonCode,
@@ -133,7 +132,7 @@ async fn main(spawner: Spawner) -> ! {
     let mut buffer = [0u8; esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN];
     let pt =
         esp_bootloader_esp_idf::partitions::read_partition_table(&mut flash, &mut buffer).unwrap();
-    println!("Currently booted partition {:?}", pt.booted_partition());
+    info!("Currently booted partition {:?}", pt.booted_partition());
 
     // Store flash storage in mutex for OTA updates
     *FLASH_STORAGE.lock().await = Some(flash);
@@ -159,7 +158,7 @@ async fn main(spawner: Spawner) -> ! {
     let config = InputConfig::default();
     let button = Input::new(button_pin, config);
 
-    println!(
+    debug!(
         "Raw ID register: {}",
         sht.raw_id_register()
             .await
@@ -236,15 +235,15 @@ async fn main(spawner: Spawner) -> ! {
         }
         Timer::after(EmbassyDuration::from_millis(500)).await;
     }
-    println!("WiFi Provisioning Portal Ready");
-    println!("1. Connect to the AP: `esp-radio`");
-    println!("2. Navigate to: http://{gw_ip_addr_str}/");
+    info!("WiFi Provisioning Portal Ready");
+    debug!("1. Connect to the AP: `esp-radio`");
+    debug!("2. Navigate to: http://{gw_ip_addr_str}/");
     while !ap_stack.is_config_up() {
         Timer::after(EmbassyDuration::from_millis(100)).await
     }
     ap_stack
         .config_v4()
-        .inspect(|c| println!("ipv4 config: {c:?}"));
+        .inspect(|c| debug!("ipv4 config: {c:?}"));
 
     spawner
         .spawn(run_http_server(ap_stack, &WIFI_CREDENTIALS_CHANNEL))
@@ -326,7 +325,7 @@ async fn run_http_server(
     >,
 ) {
     const HTTP_PORT: u16 = 80;
-    println!("Starting HTTP server on port {HTTP_PORT}");
+    info!("Starting HTTP server on port {HTTP_PORT}");
 
     loop {
         let mut rx_buffer = [0; 2048];
@@ -335,7 +334,7 @@ async fn run_http_server(
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(EmbassyDuration::from_secs(10)));
 
-        println!("HTTP: Waiting for connection...");
+        debug!("HTTP: Waiting for connection...");
         let result = socket
             .accept(IpListenEndpoint {
                 addr: None,
@@ -344,19 +343,19 @@ async fn run_http_server(
             .await;
 
         if let Err(e) = result {
-            println!("HTTP accept error: {:?}", e);
+            error!("HTTP accept error: {:?}", e);
             Timer::after(EmbassyDuration::from_millis(100)).await;
             continue;
         }
 
-        println!("HTTP: Client connected");
+        debug!("HTTP: Client connected");
 
         match handle_request(&mut socket, wifi_credentials_channel).await {
             Ok(()) => {
-                println!("HTTP: Request handled successfully");
+                debug!("HTTP: Request handled successfully");
             }
             Err(e) => {
-                println!("HTTP error: {:?}", e);
+                error!("HTTP error: {:?}", e);
             }
         }
 
@@ -435,7 +434,7 @@ where
         _ => return send_response(socket, 405, "Method Not Allowed", &[], b"").await,
     };
 
-    println!("HTTP: {} {}", method_str, path);
+    debug!("HTTP: {} {}", method_str, path);
 
     // Handle captive portal redirects
     const CAPTIVE_PATHS: &[&str] = &["/generate_204", "/gen_204", "/ncsi.txt", "/connecttest.txt"];
@@ -464,7 +463,7 @@ where
 
             match parse_form_data(body) {
                 Some(form) => {
-                    println!(
+                    debug!(
                         "WiFi Credentials Received: SSID: {} | Password: {}",
                         form.ssid, form.password
                     );
@@ -475,7 +474,7 @@ where
                             password: form.password,
                         })
                         .await;
-                    println!("Credentials sent!");
+                    debug!("Credentials sent!");
 
                     send_response(
                         socket,
@@ -573,14 +572,14 @@ async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     let mut tx_buf = [0u8; 1500];
     let mut rx_buf = [0u8; 1500];
 
-    println!("Starting Captive Portal DNS server on port {DNS_PORT}");
-    println!("All DNS queries will resolve to {gw_ip_addr}");
+    info!("Starting Captive Portal DNS server on port {DNS_PORT}");
+    debug!("All DNS queries will resolve to {gw_ip_addr}");
 
     let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
     let udp_stack = Udp::new(stack, &buffers);
 
     loop {
-        println!("Starting Captive Portal DNS server");
+        debug!("Starting Captive Portal DNS server");
         _ = run(
             &udp_stack,
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DNS_PORT)),
@@ -605,35 +604,35 @@ async fn connection(
     >,
     wifi_connected: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
 ) {
-    println!("start connection task");
-    println!("Device capabilities: {:?}", controller.capabilities());
+    debug!("start connection task");
+    debug!("Device capabilities: {:?}", controller.capabilities());
 
     // Start in AP mode first for provisioning
     let ap_config =
         ModeConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio".into()));
     controller.set_config(&ap_config).unwrap();
-    println!("Starting WiFi in AP mode");
+    debug!("Starting WiFi in AP mode");
     controller.start_async().await.unwrap();
-    println!("WiFi AP started!");
+    debug!("WiFi AP started!");
 
     // Wait for credentials
-    println!("Waiting for WiFi credentials...");
+    debug!("Waiting for WiFi credentials...");
     let credentials = wifi_credentials_channel.receiver().receive().await;
-    println!("Credentials received! SSID: {}", credentials.ssid);
+    info!("Credentials received! SSID: {}", credentials.ssid);
 
     // Give the HTTP handler time to send the saved page before dropping AP
-    println!("Delaying AP shutdown to allow HTTP response to complete...");
+    debug!("Delaying AP shutdown to allow HTTP response to complete...");
     Timer::after(EmbassyDuration::from_secs(2)).await;
 
     // Stop the AP
-    println!("Stopping AP mode...");
+    debug!("Stopping AP mode...");
     controller.stop_async().await.unwrap();
-    println!("AP stopped");
+    debug!("AP stopped");
 
     Timer::after(EmbassyDuration::from_secs(1)).await;
 
     // Configure and start station mode
-    println!("Configuring station mode...");
+    debug!("Configuring station mode...");
     let client_config = ClientConfig::default()
         .with_ssid(credentials.ssid.as_str().into())
         .with_password(credentials.password.as_str().into());
@@ -641,26 +640,26 @@ async fn connection(
     let sta_config = ModeConfig::Client(client_config);
     controller.set_config(&sta_config).unwrap();
 
-    println!("Starting WiFi in station mode...");
+    debug!("Starting WiFi in station mode...");
     controller.start_async().await.unwrap();
-    println!("WiFi station started!");
+    debug!("WiFi station started!");
 
     // Connect to the network
-    println!("Connecting to WiFi network...");
+    debug!("Connecting to WiFi network...");
     loop {
         match controller.connect_async().await {
             Ok(()) => {
-                println!("Successfully connected to WiFi!");
+                debug!("Successfully connected to WiFi!");
                 // Signal that WiFi is connected
                 wifi_connected.signal(());
 
                 // Wait for disconnect event
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
-                println!("Disconnected from WiFi, will attempt to reconnect...");
+                debug!("Disconnected from WiFi, will attempt to reconnect...");
             }
             Err(e) => {
-                println!("Failed to connect: {:?}", e);
-                println!("Retrying in 5 seconds...");
+                error!("Failed to connect: {:?}", e);
+                debug!("Retrying in 5 seconds...");
                 Timer::after(EmbassyDuration::from_secs(5)).await;
             }
         }
@@ -684,24 +683,24 @@ async fn mqtt_task(
     wifi_connected: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
 ) {
     // Wait for WiFi connection
-    println!("MQTT: Waiting for WiFi connection...");
+    debug!("MQTT: Waiting for WiFi connection...");
     wifi_connected.wait().await;
-    println!("MQTT: WiFi connected signal received, waiting for network configuration...");
+    debug!("MQTT: WiFi connected signal received, waiting for network configuration...");
 
     // Wait for DHCP to assign an IP address
-    println!("MQTT: Waiting for network configuration...");
+    debug!("MQTT: Waiting for network configuration...");
     loop {
         if stack.is_config_up() {
             break;
         }
         Timer::after(EmbassyDuration::from_millis(100)).await;
     }
-    println!("MQTT: Network configuration ready");
+    debug!("MQTT: Network configuration ready");
 
-    println!("MQTT: Waiting to get IP address...");
+    debug!("MQTT: Waiting to get IP address...");
     loop {
         if let Some(config) = stack.config_v4() {
-            println!("MQTT: Got IP: {}", config.address);
+            debug!("MQTT: Got IP: {}", config.address);
             break;
         }
         Timer::after(EmbassyDuration::from_millis(500)).await;
@@ -710,10 +709,10 @@ async fn mqtt_task(
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
-    println!("MQTT: Starting MQTT connection loop...");
+    debug!("MQTT: Starting MQTT connection loop...");
 
     loop {
-        println!("MQTT: Attempting to connect to broker...");
+        debug!("MQTT: Attempting to connect to broker...");
         Timer::after(EmbassyDuration::from_millis(1_000)).await;
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
@@ -722,11 +721,11 @@ async fn mqtt_task(
 
         let host = match BROKER_HOST {
             Some(h) => {
-                println!("MQTT: Using BROKER_HOST: {}", h);
+                debug!("MQTT: Using BROKER_HOST: {}", h);
                 h
             }
             None => {
-                println!(
+                debug!(
                     "MQTT: No BROKER_HOST set. Provide e.g. BROKER_HOST=10.0.0.10 (or hostname) and optional BROKER_PORT."
                 );
                 Timer::after(EmbassyDuration::from_secs(5)).await;
@@ -792,7 +791,7 @@ async fn mqtt_task(
         loop {
             // Read sensor
             if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
-                println!("Failed to start measurement: {:?}", e);
+                error!("Failed to start measurement: {:?}", e);
                 Timer::after(EmbassyDuration::from_secs(1)).await;
                 continue;
             }
@@ -802,13 +801,13 @@ async fn mqtt_task(
             let measurement = match sht.get_measurement_result().await {
                 Ok(m) => m,
                 Err(e) => {
-                    println!("Failed to get measurement result: {:?}", e);
+                    error!("Failed to get measurement result: {:?}", e);
                     Timer::after(EmbassyDuration::from_secs(1)).await;
                     continue;
                 }
             };
 
-            println!(
+            info!(
                 "  {:.2} °C | {:.2} %RH",
                 measurement.temperature.as_degrees_celsius(),
                 measurement.humidity.as_percent(),
@@ -870,7 +869,7 @@ async fn button_monitor(
     button: Input<'static>,
     button_pressed: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()>,
 ) {
-    println!("Button monitor: Waiting for button press...");
+    debug!("Button monitor: Waiting for button press...");
     let mut last_state = button.is_high();
 
     loop {
@@ -880,7 +879,7 @@ async fn button_monitor(
 
         // Detect falling edge (button press - goes from high to low due to pull-up)
         if last_state && !current_state {
-            println!("Button pressed!");
+            info!("Button pressed!");
             button_pressed.signal(());
         }
 
@@ -908,13 +907,13 @@ async fn download_and_flash_firmware(
     socket.set_timeout(Some(EmbassyDuration::from_secs(30)));
 
     let port = 8080;
-    println!("HTTP Client: Connecting to {}:{}...", address, port);
+    debug!("HTTP Client: Connecting to {}:{}...", address, port);
 
     socket.connect((address, port)).await.map_err(|e| {
-        println!("HTTP Client: Connect error: {:?}", e);
+        error!("HTTP Client: Connect error: {:?}", e);
     })?;
 
-    println!("HTTP Client: Connected!");
+    debug!("HTTP Client: Connected!");
 
     // Send HTTP GET request for firmware.bin
     let mut http_request = heapless::String::<128>::new();
@@ -929,14 +928,14 @@ async fn download_and_flash_firmware(
         .write_all(http_request.as_bytes())
         .await
         .map_err(|e| {
-            println!("HTTP Client: Write error: {:?}", e);
+            error!("HTTP Client: Write error: {:?}", e);
         })?;
 
     socket.flush().await.map_err(|e| {
-        println!("HTTP Client: Flush error: {:?}", e);
+        error!("HTTP Client: Flush error: {:?}", e);
     })?;
 
-    println!("HTTP Client: Request sent, reading response...");
+    debug!("HTTP Client: Request sent, reading response...");
 
     // Read HTTP response headers
     let mut header_buffer = [0u8; 1024];
@@ -945,13 +944,13 @@ async fn download_and_flash_firmware(
     // Read headers until we find the end marker
     loop {
         if header_len >= header_buffer.len() {
-            println!("HTTP Client: Headers too long, aborting");
+            error!("HTTP Client: Headers too long, aborting");
             return Err(());
         }
 
         match socket.read(&mut header_buffer[header_len..]).await {
             Ok(0) => {
-                println!("HTTP Client: Connection closed before headers");
+                error!("HTTP Client: Connection closed before headers");
                 return Err(());
             }
             Ok(n) => {
@@ -965,12 +964,12 @@ async fn download_and_flash_firmware(
                     let data_start = pos + 4;
                     let data_in_header = header_len - data_start;
 
-                    println!("HTTP Client: Headers received, starting firmware download...");
+                    debug!("HTTP Client: Headers received, starting firmware download...");
 
                     // Get flash storage from mutex
                     let mut flash_guard = flash_storage.lock().await;
                     let flash = flash_guard.as_mut().ok_or_else(|| {
-                        println!("HTTP Client: Flash storage not available");
+                        error!("HTTP Client: Flash storage not available");
                     })?;
 
                     // Initialize OTA updater
@@ -981,23 +980,23 @@ async fn download_and_flash_firmware(
                         &mut ota_buffer,
                     )
                     .map_err(|e| {
-                        println!("HTTP Client: Failed to create OTA updater: {:?}", e);
+                        error!("HTTP Client: Failed to create OTA updater: {:?}", e);
                     })?;
 
                     let (mut next_app_partition, part_type) =
                         ota.next_partition().map_err(|e| {
-                            println!("HTTP Client: Failed to get next partition: {:?}", e);
+                            error!("HTTP Client: Failed to get next partition: {:?}", e);
                         })?;
 
-                    println!("HTTP Client: Flashing image to {:?}", part_type);
+                    debug!("HTTP Client: Flashing image to {:?}", part_type);
 
                     // Write any data that came with headers
                     if data_in_header > 0 {
                         let chunk = &header_buffer[data_start..header_len];
                         next_app_partition.write(0, chunk).map_err(|e| {
-                            println!("HTTP Client: Failed to write initial chunk: {:?}", e);
+                            error!("HTTP Client: Failed to write initial chunk: {:?}", e);
                         })?;
-                        println!("HTTP Client: Wrote initial {} bytes", data_in_header);
+                        debug!("HTTP Client: Wrote initial {} bytes", data_in_header);
                     }
 
                     // Read and write firmware in chunks
@@ -1008,56 +1007,53 @@ async fn download_and_flash_firmware(
                     loop {
                         match socket.read(&mut chunk_buffer).await {
                             Ok(0) => {
-                                println!("HTTP Client: Firmware download complete");
+                                debug!("HTTP Client: Firmware download complete");
                                 break;
                             }
                             Ok(n) => {
                                 let chunk = &chunk_buffer[..n];
                                 next_app_partition.write(write_offset, chunk).map_err(|e| {
-                                    println!(
+                                    error!(
                                         "HTTP Client: Failed to write chunk at offset {}: {:?}",
                                         write_offset, e
                                     );
                                 })?;
                                 write_offset += n as u32;
                                 total_written += n;
-                                println!(
-                                    "HTTP Client: Wrote {} bytes (total: {})",
-                                    n, total_written
-                                );
+                                debug!("HTTP Client: Wrote {} bytes (total: {})", n, total_written);
                             }
                             Err(e) => {
-                                println!("HTTP Client: Read error: {:?}", e);
+                                error!("HTTP Client: Read error: {:?}", e);
                                 return Err(());
                             }
                         }
                     }
 
-                    println!("HTTP Client: Firmware written, activating partition...");
+                    debug!("HTTP Client: Firmware written, activating partition...");
 
                     // Activate the next partition
                     ota.activate_next_partition().map_err(|e| {
-                        println!("HTTP Client: Failed to activate partition: {:?}", e);
+                        error!("HTTP Client: Failed to activate partition: {:?}", e);
                     })?;
-                    println!("HTTP Client: Partition activated successfully");
+                    debug!("HTTP Client: Partition activated successfully");
 
                     // Set OTA state to NEW
                     match ota.set_current_ota_state(esp_bootloader_esp_idf::ota::OtaImageState::New)
                     {
                         Ok(()) => {
-                            println!("HTTP Client: OTA state set to NEW");
+                            debug!("HTTP Client: OTA state set to NEW");
                         }
                         Err(e) => {
-                            println!("HTTP Client: Failed to set OTA state: {:?}", e);
+                            error!("HTTP Client: Failed to set OTA state: {:?}", e);
                         }
                     }
 
-                    println!("HTTP Client: OTA update complete! Please reset the device.");
+                    debug!("HTTP Client: OTA update complete! Please reset the device.");
                     return Ok(());
                 }
             }
             Err(e) => {
-                println!("HTTP Client: Read error while reading headers: {:?}", e);
+                error!("HTTP Client: Read error while reading headers: {:?}", e);
                 return Err(());
             }
         }
@@ -1073,43 +1069,43 @@ async fn http_client_task(
         Option<FlashStorage<'static>>,
     >,
 ) {
-    println!("HTTP Client: Task started!");
+    debug!("HTTP Client: Task started!");
     // Wait for WiFi connection - poll stack state instead of relying on signal
     // This is more reliable as the signal might not wake all waiters
-    println!("HTTP Client: Waiting for WiFi connection...");
+    debug!("HTTP Client: Waiting for WiFi connection...");
 
     // Wait for network to be configured (which means WiFi is connected)
     // Poll stack state directly instead of waiting on signal
     loop {
         if stack.is_config_up() {
-            println!("HTTP Client: Network configured, WiFi is connected");
+            debug!("HTTP Client: Network configured, WiFi is connected");
             break;
         }
         Timer::after(EmbassyDuration::from_millis(100)).await;
     }
-    println!("HTTP Client: WiFi connected, network configuration ready");
+    debug!("HTTP Client: WiFi connected, network configuration ready");
 
     // Wait for network to be fully ready
-    println!("HTTP Client: Waiting for network to stabilize...");
+    debug!("HTTP Client: Waiting for network to stabilize...");
     Timer::after(EmbassyDuration::from_secs(2)).await;
 
     if let Some(config) = stack.config_v4() {
-        println!("HTTP Client: Got IP address: {}", config.address);
+        debug!("HTTP Client: Got IP address: {}", config.address);
     }
 
-    println!("HTTP Client: Ready, waiting for button press...");
+    debug!("HTTP Client: Ready, waiting for button press...");
 
     loop {
         // Wait for button press signal
-        println!("HTTP Client: Waiting for BUTTON_PRESSED signal...");
+        debug!("HTTP Client: Waiting for BUTTON_PRESSED signal...");
         button_pressed.wait().await;
-        println!("HTTP Client: Button pressed signal received! Starting firmware download...");
+        debug!("HTTP Client: Button pressed signal received! Starting firmware download...");
 
         // Get host IP from environment variable
         let host_ip_str = match HOST_IP {
             Some(ip) => ip,
             None => {
-                println!("HTTP Client: HOST_IP not set, skipping OTA update");
+                debug!("HTTP Client: HOST_IP not set, skipping OTA update");
                 Timer::after(EmbassyDuration::from_millis(100)).await;
                 continue;
             }
@@ -1117,7 +1113,7 @@ async fn http_client_task(
         let address = match Ipv4Addr::from_str(host_ip_str) {
             Ok(addr) => addr,
             Err(_) => {
-                println!("HTTP Client: Invalid HOST_IP format: {}", host_ip_str);
+                debug!("HTTP Client: Invalid HOST_IP format: {}", host_ip_str);
                 Timer::after(EmbassyDuration::from_millis(100)).await;
                 continue;
             }

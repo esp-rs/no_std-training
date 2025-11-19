@@ -19,6 +19,7 @@ esp-rtos = { version = "0.2.0", features = [
   "embassy",
   "esp32c3",
 ] }
+log = "0.4.28"
 shtcx = { git = "https://github.com/Fristi/shtcx-rs", branch = "feature/async-support" }
 
 [profile.dev]

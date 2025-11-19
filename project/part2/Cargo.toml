@@ -32,6 +32,7 @@ esp-rtos = { version = "0.2.0", features = [
   "esp-radio",
   "log-04",
 ] }
+log = "0.4.28"
 shtcx = { git = "https://github.com/Fristi/shtcx-rs", branch = "feature/async-support" }
 static_cell      = "2.1.1"
 

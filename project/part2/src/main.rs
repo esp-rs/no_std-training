@@ -23,13 +23,13 @@ use esp_hal::{
     rng::Rng,
     timer::timg::TimerGroup,
 };
-use esp_println::println;
 use esp_radio::{
     Controller,
     wifi::{
         ClientConfig, ModeConfig, ScanConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
     },
 };
+use log::{debug, error, info};
 use shtcx::{
     self,
     asynchronous::{PowerMode, max_measurement_duration, shtc3},
@@ -79,7 +79,7 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let mut sht = shtc3(i2c);
 
-    println!(
+    debug!(
         "Raw ID register: {}",
         sht.raw_id_register()
             .await
@@ -118,10 +118,10 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_millis(500)).await;
     }
 
-    println!("Waiting to get IP address...");
+    debug!("Waiting to get IP address...");
     loop {
         if let Some(config) = stack.config_v4() {
-            println!("Got IP: {}", config.address);
+            debug!("Got IP: {}", config.address);
             break;
         }
         Timer::after(Duration::from_millis(500)).await;
@@ -134,13 +134,13 @@ async fn main(spawner: Spawner) -> ! {
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
         let remote_endpoint = (Ipv4Addr::new(142, 250, 185, 115), 80);
-        println!("connecting...");
+        debug!("connecting...");
         let r = socket.connect(remote_endpoint).await;
         if let Err(e) = r {
-            println!("connect error: {:?}", e);
+            error!("connect error: {:?}", e);
             continue;
         }
-        println!("connected!");
+        info!("connected!");
         let mut buf = [0; 1024];
         loop {
             use embedded_io_async::Write;
@@ -148,25 +148,25 @@ async fn main(spawner: Spawner) -> ! {
                 .write_all(b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n")
                 .await;
             if let Err(e) = r {
-                println!("write error: {:?}", e);
+                error!("write error: {:?}", e);
                 break;
             }
             let n = match socket.read(&mut buf).await {
                 Ok(0) => {
-                    println!("read EOF");
+                    debug!("read EOF");
                     break;
                 }
                 Ok(n) => n,
                 Err(e) => {
-                    println!("read error: {:?}", e);
+                    error!("read error: {:?}", e);
                     break;
                 }
             };
-            println!("{}", core::str::from_utf8(&buf[..n]).unwrap());
+            info!("{}", core::str::from_utf8(&buf[..n]).unwrap());
         }
         // Read sensor
         if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
-            println!("Failed to start measurement: {:?}", e);
+            error!("Failed to start measurement: {:?}", e);
             Timer::after(Duration::from_secs(1)).await;
             continue;
         }
@@ -176,13 +176,13 @@ async fn main(spawner: Spawner) -> ! {
         let measurement = match sht.get_measurement_result().await {
             Ok(m) => m,
             Err(e) => {
-                println!("Failed to get measurement result: {:?}", e);
+                error!("Failed to get measurement result: {:?}", e);
                 Timer::after(Duration::from_secs(1)).await;
                 continue;
             }
         };
 
-        println!(
+        info!(
             "  {:.2} °C | {:.2} %RH",
             measurement.temperature.as_degrees_celsius(),
             measurement.humidity.as_percent(),
@@ -193,8 +193,8 @@ async fn main(spawner: Spawner) -> ! {
 
 #[embassy_executor::task]
 async fn connection(mut controller: WifiController<'static>) {
-    println!("start connection task");
-    println!("Device capabilities: {:?}", controller.capabilities());
+    debug!("start connection task");
+    debug!("Device capabilities: {:?}", controller.capabilities());
     loop {
         match esp_radio::wifi::sta_state() {
             WifiStaState::Connected => {
@@ -211,26 +211,26 @@ async fn connection(mut controller: WifiController<'static>) {
                     .with_password(PASSWORD.into()),
             );
             controller.set_config(&client_config).unwrap();
-            println!("Starting wifi");
+            debug!("Starting wifi");
             controller.start_async().await.unwrap();
-            println!("Wifi started!");
+            debug!("Wifi started!");
 
-            println!("Scan");
+            debug!("Scan");
             let scan_config = ScanConfig::default().with_max(10);
             let result = controller
                 .scan_with_config_async(scan_config)
                 .await
                 .unwrap();
             for ap in result {
-                println!("{:?}", ap);
+                debug!("{:?}", ap);
             }
         }
-        println!("About to connect...");
+        debug!("About to connect...");
 
         match controller.connect_async().await {
-            Ok(_) => println!("Wifi connected!"),
+            Ok(_) => info!("Wifi connected!"),
             Err(e) => {
-                println!("Failed to connect to wifi: {e:?}");
+                error!("Failed to connect to wifi: {e:?}");
                 Timer::after(Duration::from_millis(5000)).await
             }
         }
