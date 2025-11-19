@@ -4,10 +4,6 @@ name         = "no_std-training"
 rust-version = "1.88"
 version      = "0.1.0"
 
-[[bin]]
-name = "no_std-training"
-path = "./src/bin/main.rs"
-
 [dependencies]
 edge-captive = { version = "0.6.0", default-features = false, features = ["io", "log"] }
 edge-dhcp = "0.6.0"
