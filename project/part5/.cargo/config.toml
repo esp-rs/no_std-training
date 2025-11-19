@@ -2,7 +2,7 @@
 runner = "espflash flash --monitor --chip esp32c3"
 
 [env]
-ESP_LOG="debug"
+ESP_LOG="info"
 
 [net]
 retry = 3                   # network retries

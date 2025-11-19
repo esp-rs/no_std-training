@@ -26,7 +26,7 @@ use esp_hal::{
 use esp_radio::{
     Controller,
     wifi::{
-        ClientConfig, ModeConfig, ScanConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
+        ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState,
     },
 };
 use log::{debug, error, info};
@@ -202,16 +202,6 @@ async fn connection(mut controller: WifiController<'static>) {
             debug!("Starting wifi");
             controller.start_async().await.expect("Failed to start WiFi");
             debug!("Wifi started!");
-
-            debug!("Scan");
-            let scan_config = ScanConfig::default().with_max(10);
-            let result = controller
-                .scan_with_config_async(scan_config)
-                .await
-                .expect("Failed to scan for WiFi networks");
-            for ap in result {
-                debug!("{:?}", ap);
-            }
         }
         debug!("About to connect...");
 
