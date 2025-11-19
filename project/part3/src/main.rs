@@ -33,7 +33,7 @@ use log::{debug, error, info};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize)]
 struct WifiCredentials {
     ssid: heapless::String<32>,
     password: heapless::String<64>,
@@ -144,13 +144,6 @@ async fn main(spawner: Spawner) -> ! {
     }
 }
 
-// Define the form structure for WiFi credentials
-#[derive(serde::Deserialize)]
-struct WifiForm {
-    ssid: heapless::String<32>,
-    password: heapless::String<64>,
-}
-
 // Create router with picoserve
 fn make_app() -> picoserve::Router<
     impl picoserve::routing::PathRouter<(), picoserve::routing::NoPathParameters>,
@@ -182,7 +175,7 @@ async fn home_handler() -> (
 }
 
 async fn save_handler(
-    form: picoserve::extract::Form<WifiForm>,
+    form: picoserve::extract::Form<WifiCredentials>,
 ) -> (
     picoserve::response::StatusCode,
     &'static [(&'static str, &'static str)],
@@ -194,12 +187,8 @@ async fn save_handler(
     );
 
     // Send credentials to the connection task
-    let credentials = WifiCredentials {
-        ssid: form.0.ssid,
-        password: form.0.password,
-    };
     debug!("Sending credentials to connection task...");
-    WIFI_CREDENTIALS_CHANNEL.sender().send(credentials).await;
+    WIFI_CREDENTIALS_CHANNEL.sender().send(form.0).await;
     debug!("Credentials sent!");
 
     (

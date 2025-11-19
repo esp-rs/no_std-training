@@ -209,10 +209,7 @@ async fn main(spawner: Spawner) -> ! {
     );
 
     spawner
-        .spawn(connection(
-            controller,
-            &WIFI_CREDENTIALS_CHANNEL,
-        ))
+        .spawn(connection(controller, &WIFI_CREDENTIALS_CHANNEL))
         .ok();
     spawner.spawn(net_task(ap_runner)).ok();
     spawner.spawn(sta_net_task(sta_runner)).ok();
@@ -220,9 +217,7 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
     // MQTT and HTTP client tasks run concurrently - MQTT continues publishing
     // sensor data while HTTP client waits for button press to trigger OTA update
-    spawner
-        .spawn(mqtt_task(sta_stack, sht))
-        .ok();
+    spawner.spawn(mqtt_task(sta_stack, sht)).ok();
     spawner.spawn(button_monitor(button, &BUTTON_PRESSED)).ok();
     spawner
         .spawn(http_client_task(sta_stack, &BUTTON_PRESSED, &FLASH_STORAGE))
@@ -254,12 +249,6 @@ async fn main(spawner: Spawner) -> ! {
     }
 }
 
-// Define the form structure for WiFi credentials
-struct WifiForm {
-    ssid: heapless::String<32>,
-    password: heapless::String<64>,
-}
-
 // Simple URL decoding
 fn url_decode(input: &str) -> heapless::String<256> {
     let mut result = heapless::String::<256>::new();
@@ -288,7 +277,7 @@ fn url_decode(input: &str) -> heapless::String<256> {
 }
 
 // Parse form data from URL-encoded body
-fn parse_form_data(body: &[u8]) -> Option<WifiForm> {
+fn parse_form_data(body: &[u8]) -> Option<WifiCredentials> {
     let body_str = core::str::from_utf8(body).ok()?;
     let mut ssid = None;
     let mut password = heapless::String::<64>::new();
@@ -308,7 +297,7 @@ fn parse_form_data(body: &[u8]) -> Option<WifiForm> {
         }
     }
 
-    Some(WifiForm {
+    Some(WifiCredentials {
         ssid: ssid?,
         password,
     })
@@ -461,18 +450,12 @@ where
                 .unwrap_or(&[]);
 
             match parse_form_data(body) {
-                Some(form) => {
+                Some(credentials) => {
                     debug!(
                         "WiFi Credentials Received: SSID: {} | Password: {}",
-                        form.ssid, form.password
+                        credentials.ssid, credentials.password
                     );
-                    wifi_credentials_channel
-                        .sender()
-                        .send(WifiCredentials {
-                            ssid: form.ssid,
-                            password: form.password,
-                        })
-                        .await;
+                    wifi_credentials_channel.sender().send(credentials).await;
                     debug!("Credentials sent!");
 
                     send_response(
@@ -895,7 +878,7 @@ async fn button_monitor(
 async fn download_and_flash_firmware(
     stack: Stack<'static>,
     host_ip_str: &str,
-    address: Ipv4Addr,
+    address: IpAddress,
     flash_storage: &'static Mutex<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
         Option<FlashStorage<'static>>,
@@ -903,6 +886,20 @@ async fn download_and_flash_firmware(
 ) -> Result<(), ()> {
     use embedded_io_async::Write;
     use embedded_storage::Storage;
+
+    // Ensure network is ready
+    if !stack.is_link_up() {
+        error!("HTTP Client: Network link is not up");
+        return Err(());
+    }
+
+    if !stack.is_config_up() {
+        error!("HTTP Client: Network is not configured");
+        return Err(());
+    }
+
+    // Small delay before connecting (similar to MQTT)
+    Timer::after(EmbassyDuration::from_millis(500)).await;
 
     // Prepare buffers for TCP socket
     let mut rx_buffer = [0; 4096];
@@ -1040,7 +1037,7 @@ async fn download_and_flash_firmware(
                     ota.activate_next_partition().map_err(|e| {
                         error!("HTTP Client: Failed to activate partition: {:?}", e);
                     })?;
-                    debug!("HTTP Client: Partition activated successfully");
+                    info!("HTTP Client: Partition activated successfully");
 
                     // Set OTA state to NEW
                     match ota.set_current_ota_state(esp_bootloader_esp_idf::ota::OtaImageState::New)
@@ -1053,7 +1050,7 @@ async fn download_and_flash_firmware(
                         }
                     }
 
-                    debug!("HTTP Client: OTA update complete! Please reset the device.");
+                    info!("HTTP Client: OTA update complete! Please reset the device.");
                     return Ok(());
                 }
             }
@@ -1115,9 +1112,9 @@ async fn http_client_task(
                 continue;
             }
         };
-        let address = match Ipv4Addr::from_str(host_ip_str) {
-            Ok(addr) => addr,
-            Err(_) => {
+        let address = match parse_ipv4_address(host_ip_str) {
+            Some(addr) => addr,
+            None => {
                 debug!("HTTP Client: Invalid HOST_IP format: {}", host_ip_str);
                 Timer::after(EmbassyDuration::from_millis(100)).await;
                 continue;

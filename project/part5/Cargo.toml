@@ -5,7 +5,7 @@ rust-version = "1.88"
 version      = "0.1.0"
 
 [dependencies]
-edge-captive = { version = "0.6.0", default-features = false, features = ["io", "log"] }
+edge-captive = { version = "0.6.0", default-features = false, features = ["io"] }
 edge-dhcp = "0.6.0"
 edge-nal = "0.5.0"
 edge-nal-embassy = "0.6.0"
