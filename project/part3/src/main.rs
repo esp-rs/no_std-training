@@ -10,13 +10,19 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
-use core::{fmt::Debug, net::Ipv4Addr, str::FromStr, time::Duration};
+use core::{
+    fmt::Debug,
+    net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
+    time::Duration,
+};
 
 use edge_captive::io::run;
 use edge_http::Method;
 use edge_http::io::Error as HttpError;
 use edge_http::io::server::{Connection, Handler, Server};
 use edge_nal::TcpBind;
+use edge_nal_embassy::{Tcp, TcpBuffers};
 use embassy_executor::Spawner;
 use embassy_net::{
     Ipv4Cidr, Runner, Stack, StackResources, StaticConfigV4, dns::DnsQueryType, tcp::TcpSocket,
@@ -163,11 +169,6 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(EmbassyDuration::from_secs(60)).await;
     }
 }
-
-// TcpAccept adapter using edge_nal_embassy::Tcp
-// The bind() method returns a type that implements TcpAccept directly
-use core::net::SocketAddr;
-use edge_nal_embassy::{Tcp, TcpBuffers};
 
 // Simple URL decoding
 fn url_decode(input: &str) -> heapless::String<256> {

@@ -7,7 +7,7 @@ version      = "0.1.0"
 [dependencies]
 edge-captive = { version = "0.6.0", default-features = false, features = ["io"] }
 edge-dhcp = "0.6.0"
-edge-http = { version = "0.6.1", default-features = false, features = ["embedded-io-async", "edge-nal"] }
+edge-http = { version = "0.6.1", default-features = false, features = ["io", "embedded-io-async", "edge-nal"] }
 edge-nal = "0.5.0"
 edge-nal-embassy = "0.6.0"
 embassy-executor = "0.9.1"
