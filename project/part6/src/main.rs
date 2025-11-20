@@ -77,12 +77,6 @@ struct WifiCredentials {
     password: heapless::String<64>,
 }
 
-static WIFI_CREDENTIALS_CHANNEL: Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    WifiCredentials,
-    1,
-> = Channel::new();
-
 static BUTTON_PRESSED: Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, ()> =
     Signal::new();
 
@@ -201,8 +195,14 @@ async fn main(spawner: Spawner) -> ! {
         seed,
     );
 
+    // Create WiFi credentials channel
+    static WIFI_CREDENTIALS_CHANNEL_CELL: static_cell::StaticCell<
+        Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, WifiCredentials, 1>,
+    > = static_cell::StaticCell::new();
+    let wifi_credentials_channel = WIFI_CREDENTIALS_CHANNEL_CELL.uninit().write(Channel::new());
+
     spawner
-        .spawn(connection(controller, &WIFI_CREDENTIALS_CHANNEL))
+        .spawn(connection(controller, wifi_credentials_channel))
         .ok();
     spawner.spawn(net_task(ap_runner)).ok();
     spawner.spawn(sta_net_task(sta_runner)).ok();
@@ -233,7 +233,7 @@ async fn main(spawner: Spawner) -> ! {
         .inspect(|c| debug!("ipv4 config: {c:?}"));
 
     spawner
-        .spawn(run_http_server(ap_stack, &WIFI_CREDENTIALS_CHANNEL))
+        .spawn(run_http_server(ap_stack, wifi_credentials_channel))
         .ok();
 
     // Keep main task alive
@@ -335,10 +335,14 @@ async fn run_http_server(
             Ok(()) => {
                 debug!("HTTP: Request handled successfully");
             }
-            Err(e) => {
-                error!("HTTP error: {:?}", e);
+            Err(_) => {
+                // Error already logged in handle_request, just close the socket
+                debug!("HTTP: Closing connection after error");
             }
         }
+
+        // Close the socket after handling the request
+        socket.close();
 
         Timer::after(EmbassyDuration::from_millis(100)).await;
     }
@@ -346,7 +350,7 @@ async fn run_http_server(
 
 async fn handle_request<T>(
     socket: &mut T,
-    wifi_credentials_channel: &'static Channel<
+    wifi_credentials_channel: &Channel<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
         WifiCredentials,
         1,
@@ -362,11 +366,16 @@ where
     // Read until we get a complete request (ends with \r\n\r\n)
     loop {
         if request_len >= request_buffer.len() {
+            debug!("HTTP: Request buffer overflow");
             return Err(());
         }
 
         match socket.read(&mut request_buffer[request_len..]).await {
-            Ok(0) => return Err(()),
+            Ok(0) => {
+                // Client closed connection before sending complete request
+                debug!("HTTP: Client closed connection before request complete");
+                return Err(());
+            }
             Ok(n) => {
                 request_len += n;
                 // Check for end of headers
@@ -384,7 +393,10 @@ where
                     }
                 }
             }
-            Err(_) => return Err(()),
+            Err(e) => {
+                debug!("HTTP: Read error: {:?}", e);
+                return Err(());
+            }
         }
     }
 }
@@ -392,7 +404,7 @@ where
 async fn handle_parsed_request<T>(
     socket: &mut T,
     request: &[u8],
-    wifi_credentials_channel: &'static Channel<
+    wifi_credentials_channel: &Channel<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
         WifiCredentials,
         1,
