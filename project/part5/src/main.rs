@@ -84,19 +84,6 @@ const SAVED_HTML: &str = include_str!(concat!(
     "/assets/templates/saved.html"
 ));
 
-fn parse_ipv4_address(s: &str) -> Option<IpAddress> {
-    let mut parts_iter = s.split('.');
-    let a = parts_iter.next()?.parse::<u8>().ok()?;
-    let b = parts_iter.next()?.parse::<u8>().ok()?;
-    let c = parts_iter.next()?.parse::<u8>().ok()?;
-    let d = parts_iter.next()?.parse::<u8>().ok()?;
-    // Ensure there are exactly 4 parts
-    if parts_iter.next().is_some() {
-        return None;
-    }
-    Some(IpAddress::Ipv4(Ipv4Address::new(a, b, c, d)))
-}
-
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
@@ -525,8 +512,8 @@ async fn mqtt_task(
             .unwrap_or(1884);
 
         // If host is an IPv4 literal, bypass DNS
-        let address = if let Some(ip) = parse_ipv4_address(host) {
-            ip
+        let address = if let Ok(ipv4) = host.parse::<Ipv4Address>() {
+            IpAddress::Ipv4(ipv4)
         } else {
             match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
                 Ok(address) => address,

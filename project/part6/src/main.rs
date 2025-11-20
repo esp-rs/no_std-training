@@ -102,13 +102,6 @@ const SAVED_HTML: &str = include_str!(concat!(
     "/assets/templates/saved.html"
 ));
 
-fn parse_ipv4_address(s: &str) -> Option<IpAddress> {
-    Ipv4Addr::from_str(s).ok().map(|addr| {
-        let octets = addr.octets();
-        IpAddress::Ipv4(Ipv4Address::new(octets[0], octets[1], octets[2], octets[3]))
-    })
-}
-
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
@@ -727,9 +720,9 @@ async fn mqtt_task(
             .unwrap_or(1884);
 
         // If host is an IPv4 literal, bypass DNS
-        let address = match parse_ipv4_address(host) {
-            Some(ip) => ip,
-            None => match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
+        let address = match host.parse::<Ipv4Address>() {
+            Ok(ipv4) => IpAddress::Ipv4(ipv4),
+            Err(_) => match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
                 Ok(address) => address,
                 Err(e) => {
                     error!("DNS lookup error: {e:?}");
@@ -1112,9 +1105,9 @@ async fn http_client_task(
                 continue;
             }
         };
-        let address = match parse_ipv4_address(host_ip_str) {
-            Some(addr) => addr,
-            None => {
+        let address = match host_ip_str.parse::<Ipv4Address>() {
+            Ok(ipv4) => IpAddress::Ipv4(ipv4),
+            Err(_) => {
                 debug!("HTTP Client: Invalid HOST_IP format: {}", host_ip_str);
                 Timer::after(EmbassyDuration::from_millis(100)).await;
                 continue;
