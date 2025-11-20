@@ -10,16 +10,20 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
-use core::{net::Ipv4Addr, str::FromStr, time::Duration};
+use core::{fmt::Debug, net::Ipv4Addr, str::FromStr, time::Duration};
 
 use edge_captive::io::run;
+use edge_http::Method;
+use edge_http::io::Error as HttpError;
+use edge_http::io::server::{Connection, Handler, Server};
+use edge_nal::TcpBind;
 use embassy_executor::Spawner;
 use embassy_net::{
-    IpListenEndpoint, Ipv4Cidr, Runner, Stack, StackResources, StaticConfigV4, dns::DnsQueryType,
-    tcp::TcpSocket,
+    Ipv4Cidr, Runner, Stack, StackResources, StaticConfigV4, dns::DnsQueryType, tcp::TcpSocket,
 };
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration as EmbassyDuration, Timer};
+use embedded_io_async::{Read, Write};
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
@@ -106,6 +110,10 @@ async fn main(spawner: Spawner) -> ! {
         seed,
     );
 
+    // Store stack in static cell for shared access
+    static AP_STACK_CELL: static_cell::StaticCell<Stack<'static>> = static_cell::StaticCell::new();
+    let ap_stack_ref = AP_STACK_CELL.uninit().write(ap_stack);
+
     // Init network stack for STA (client connection)
     static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
         static_cell::StaticCell::new();
@@ -129,12 +137,14 @@ async fn main(spawner: Spawner) -> ! {
         .ok();
     spawner.spawn(net_task(ap_runner)).ok();
     spawner.spawn(sta_net_task(sta_runner)).ok();
-    spawner.spawn(run_dhcp(ap_stack, gw_ip_addr)).ok();
-    spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
+    spawner.spawn(run_dhcp(ap_stack_ref, gw_ip_addr)).ok();
+    spawner
+        .spawn(run_captive_portal(ap_stack_ref, gw_ip_addr))
+        .ok();
     spawner.spawn(http_client_task(sta_stack)).ok();
 
     loop {
-        if ap_stack.is_link_up() {
+        if ap_stack_ref.is_link_up() {
             break;
         }
         Timer::after(EmbassyDuration::from_millis(500)).await;
@@ -142,15 +152,15 @@ async fn main(spawner: Spawner) -> ! {
     info!("WiFi Provisioning Portal Ready");
     debug!("1. Connect to the AP: `esp-radio`");
     debug!("2. Navigate to: http://{gw_ip_addr_str}/");
-    while !ap_stack.is_config_up() {
+    while !ap_stack_ref.is_config_up() {
         Timer::after(EmbassyDuration::from_millis(100)).await
     }
-    ap_stack
+    ap_stack_ref
         .config_v4()
         .inspect(|c| debug!("ipv4 config: {c:?}"));
 
     spawner
-        .spawn(run_http_server(ap_stack, wifi_credentials_channel))
+        .spawn(run_http_server(ap_stack_ref, wifi_credentials_channel))
         .ok();
 
     // Keep main task alive
@@ -158,6 +168,11 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(EmbassyDuration::from_secs(60)).await;
     }
 }
+
+// TcpAccept adapter using edge_nal_embassy::Tcp
+// The bind() method returns a type that implements TcpAccept directly
+use core::net::SocketAddr;
+use edge_nal_embassy::{Tcp, TcpBuffers};
 
 // Simple URL decoding
 fn url_decode(input: &str) -> heapless::String<256> {
@@ -213,9 +228,119 @@ fn parse_form_data(body: &[u8]) -> Option<WifiCredentials> {
     })
 }
 
+// HTTP Handler implementation
+struct HttpHandler {
+    wifi_credentials_channel: &'static Channel<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        WifiCredentials,
+        1,
+    >,
+}
+
+impl Handler for HttpHandler {
+    type Error<E>
+        = HttpError<E>
+    where
+        E: Debug;
+
+    async fn handle<T, const N: usize>(
+        &self,
+        _task_id: impl core::fmt::Display + Copy,
+        conn: &mut Connection<'_, T, N>,
+    ) -> Result<(), Self::Error<T::Error>>
+    where
+        T: Read + Write,
+    {
+        let headers = conn.headers()?;
+        let method = headers.method;
+        let path = headers.path;
+
+        debug!(
+            "HTTP: {} {}",
+            match method {
+                Method::Get => "GET",
+                Method::Post => "POST",
+                _ => "OTHER",
+            },
+            path
+        );
+
+        // Handle captive portal redirects
+        const CAPTIVE_PATHS: &[&str] =
+            &["/generate_204", "/gen_204", "/ncsi.txt", "/connecttest.txt"];
+        if CAPTIVE_PATHS.contains(&path) {
+            conn.initiate_response(302, Some("Found"), &[("Location", "/")])
+                .await?;
+            return Ok(());
+        }
+
+        // Handle routes
+        match (method, path) {
+            (Method::Get, "/") => {
+                conn.initiate_response(
+                    200,
+                    Some("OK"),
+                    &[("Content-Type", "text/html; charset=utf-8")],
+                )
+                .await?;
+                conn.write_all(HOME_HTML.as_bytes()).await?;
+            }
+            (Method::Post, "/save") => {
+                // Read request body
+                let mut body = heapless::Vec::<u8, 512>::new();
+                let mut buf = [0u8; 256];
+                loop {
+                    match conn.read(&mut buf).await {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            for &b in &buf[..n] {
+                                if body.push(b).is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+
+                match parse_form_data(&body) {
+                    Some(credentials) => {
+                        debug!(
+                            "WiFi Credentials Received: SSID: {} | Password: {}",
+                            credentials.ssid, credentials.password
+                        );
+                        self.wifi_credentials_channel
+                            .sender()
+                            .send(credentials)
+                            .await;
+                        debug!("Credentials sent!");
+
+                        conn.initiate_response(
+                            200,
+                            Some("OK"),
+                            &[("Content-Type", "text/html; charset=utf-8")],
+                        )
+                        .await?;
+                        conn.write_all(SAVED_HTML.as_bytes()).await?;
+                    }
+                    None => {
+                        conn.initiate_response(400, Some("Bad Request"), &[])
+                            .await?;
+                    }
+                }
+            }
+            _ => {
+                conn.initiate_response(404, Some("Not Found"), &[]).await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[embassy_executor::task]
 async fn run_http_server(
-    stack: Stack<'static>,
+    stack: &'static Stack<'static>,
     wifi_credentials_channel: &'static Channel<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
         WifiCredentials,
@@ -225,211 +350,38 @@ async fn run_http_server(
     const HTTP_PORT: u16 = 80;
     info!("Starting HTTP server on port {HTTP_PORT}");
 
-    loop {
-        let mut rx_buffer = [0; 2048];
-        let mut tx_buffer = [0; 2048];
+    static TCP_BUFFERS: static_cell::StaticCell<TcpBuffers<1, 2048, 2048>> =
+        static_cell::StaticCell::new();
+    let buffers = TCP_BUFFERS.uninit().write(TcpBuffers::new());
 
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(EmbassyDuration::from_secs(10)));
+    let tcp = Tcp::new(*stack, buffers);
+    let mut acceptor = tcp
+        .bind(SocketAddr::new(
+            core::net::IpAddr::V4(core::net::Ipv4Addr::UNSPECIFIED),
+            HTTP_PORT,
+        ))
+        .await
+        .expect("Failed to bind TCP socket");
 
-        debug!("HTTP: Waiting for connection...");
-        let result = socket
-            .accept(IpListenEndpoint {
-                addr: None,
-                port: HTTP_PORT,
-            })
-            .await;
-
-        if let Err(e) = result {
-            error!("HTTP accept error: {:?}", e);
-            Timer::after(EmbassyDuration::from_millis(100)).await;
-            continue;
-        }
-
-        debug!("HTTP: Client connected");
-
-        match handle_request(&mut socket, wifi_credentials_channel).await {
-            Ok(()) => {
-                debug!("HTTP: Request handled successfully");
-            }
-            Err(_) => {
-                // Error already logged in handle_request, just close the socket
-                debug!("HTTP: Closing connection after error");
-            }
-        }
-
-        // Close the socket after handling the request
-        socket.close();
-
-        Timer::after(EmbassyDuration::from_millis(100)).await;
-    }
-}
-
-async fn handle_request<T>(
-    socket: &mut T,
-    wifi_credentials_channel: &Channel<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        WifiCredentials,
-        1,
-    >,
-) -> Result<(), ()>
-where
-    T: embedded_io_async::Read + embedded_io_async::Write,
-{
-    // Read request line and headers
-    let mut request_buffer = [0u8; 1024];
-    let mut request_len = 0;
-
-    // Read until we get a complete request (ends with \r\n\r\n)
-    loop {
-        if request_len >= request_buffer.len() {
-            debug!("HTTP: Request buffer overflow");
-            return Err(());
-        }
-
-        match socket.read(&mut request_buffer[request_len..]).await {
-            Ok(0) => {
-                // Client closed connection before sending complete request
-                debug!("HTTP: Client closed connection before request complete");
-                return Err(());
-            }
-            Ok(n) => {
-                request_len += n;
-                // Check for end of headers
-                if request_len >= 4 {
-                    for i in 0..=request_len.saturating_sub(4) {
-                        if &request_buffer[i..i + 4] == b"\r\n\r\n" {
-                            // Found end of headers
-                            return handle_parsed_request(
-                                socket,
-                                &request_buffer[..request_len],
-                                wifi_credentials_channel,
-                            )
-                            .await;
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                debug!("HTTP: Read error: {:?}", e);
-                return Err(());
-            }
-        }
-    }
-}
-
-async fn handle_parsed_request<T>(
-    socket: &mut T,
-    request: &[u8],
-    wifi_credentials_channel: &Channel<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        WifiCredentials,
-        1,
-    >,
-) -> Result<(), ()>
-where
-    T: embedded_io_async::Read + embedded_io_async::Write,
-{
-    use edge_http::Method;
-
-    // Parse request line: "METHOD PATH HTTP/VERSION"
-    let request_str = core::str::from_utf8(request).map_err(|_| ())?;
-    let mut parts = request_str.lines().next().ok_or(())?.split_whitespace();
-    let method_str = parts.next().ok_or(())?;
-    let path = parts.next().ok_or(())?;
-
-    let method = match method_str {
-        "GET" => Method::Get,
-        "POST" => Method::Post,
-        _ => return send_response(socket, 405, "Method Not Allowed", &[], b"").await,
+    let handler = HttpHandler {
+        wifi_credentials_channel,
     };
 
-    debug!("HTTP: {} {}", method_str, path);
+    let mut server = Server::<1, 2048, 32>::new();
 
-    // Handle captive portal redirects
-    const CAPTIVE_PATHS: &[&str] = &["/generate_204", "/gen_204", "/ncsi.txt", "/connecttest.txt"];
-    if CAPTIVE_PATHS.contains(&path) {
-        return send_response(socket, 302, "Found", &[("Location", "/")], b"").await;
-    }
-
-    // Handle routes
-    match (method, path) {
-        (Method::Get, "/") => {
-            send_response(
-                socket,
-                200,
-                "OK",
-                &[("Content-Type", "text/html; charset=utf-8")],
-                HOME_HTML.as_bytes(),
-            )
+    loop {
+        if let Err(_e) = server
+            .run(Some(50000), &mut acceptor, &handler)
             .await
+            .inspect_err(|e| error!("HTTP server error: {:?}", e))
+        {
+            Timer::after(EmbassyDuration::from_millis(100)).await;
         }
-        (Method::Post, "/save") => {
-            let body = request
-                .windows(4)
-                .position(|w| w == b"\r\n\r\n")
-                .map(|i| &request[i + 4..])
-                .unwrap_or(&[]);
-
-            match parse_form_data(body) {
-                Some(credentials) => {
-                    debug!(
-                        "WiFi Credentials Received: SSID: {} | Password: {}",
-                        credentials.ssid, credentials.password
-                    );
-                    wifi_credentials_channel.sender().send(credentials).await;
-                    debug!("Credentials sent!");
-
-                    send_response(
-                        socket,
-                        200,
-                        "OK",
-                        &[("Content-Type", "text/html; charset=utf-8")],
-                        SAVED_HTML.as_bytes(),
-                    )
-                    .await
-                }
-                None => send_response(socket, 400, "Bad Request", &[], b"").await,
-            }
-        }
-        _ => send_response(socket, 404, "Not Found", &[], b"").await,
     }
-}
-
-async fn send_response<T>(
-    socket: &mut T,
-    status_code: u16,
-    status_text: &str,
-    headers: &[(&str, &str)],
-    body: &[u8],
-) -> Result<(), ()>
-where
-    T: embedded_io_async::Write,
-{
-    use core::fmt::Write as FmtWrite;
-
-    let mut response = heapless::String::<512>::new();
-    write!(response, "HTTP/1.1 {} {}\r\n", status_code, status_text).map_err(|_| ())?;
-
-    for (name, value) in headers {
-        write!(response, "{}: {}\r\n", name, value).map_err(|_| ())?;
-    }
-
-    write!(response, "Content-Length: {}\r\n", body.len()).map_err(|_| ())?;
-    write!(response, "\r\n").map_err(|_| ())?;
-
-    socket
-        .write_all(response.as_bytes())
-        .await
-        .map_err(|_| ())?;
-    socket.write_all(body).await.map_err(|_| ())?;
-    socket.flush().await.map_err(|_| ())?;
-
-    Ok(())
 }
 
 #[embassy_executor::task]
-async fn run_dhcp(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
+async fn run_dhcp(stack: &'static Stack<'static>, gw_ip_addr: Ipv4Addr) {
     use core::net::{Ipv4Addr, SocketAddrV4};
 
     use edge_dhcp::{
@@ -444,7 +396,7 @@ async fn run_dhcp(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     let mut gw_buf = [Ipv4Addr::UNSPECIFIED];
 
     let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
-    let unbound_socket = Udp::new(stack, &buffers);
+    let unbound_socket = Udp::new(*stack, &buffers);
     let mut bound_socket = unbound_socket
         .bind(core::net::SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
@@ -467,7 +419,7 @@ async fn run_dhcp(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
 }
 
 #[embassy_executor::task]
-async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
+async fn run_captive_portal(stack: &'static Stack<'static>, gw_ip_addr: Ipv4Addr) {
     use core::net::{SocketAddr, SocketAddrV4};
     use edge_nal_embassy::{Udp, UdpBuffers};
 
@@ -480,7 +432,7 @@ async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     debug!("All DNS queries will resolve to {gw_ip_addr}");
 
     let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
-    let udp_stack = Udp::new(stack, &buffers);
+    let udp_stack = Udp::new(*stack, &buffers);
 
     loop {
         debug!("Starting Captive Portal DNS server");

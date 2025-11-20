@@ -250,6 +250,9 @@ checksum = "16f9b24aa48b6e43e6316a02bed8291f8a856cb6d4e63a2f533d35d74d04141d"
 dependencies = [
  "base64",
  "edge-nal",
+ "embassy-futures",
+ "embassy-sync 0.7.2",
+ "embassy-time 0.4.0",
  "embedded-io-async 0.6.1",
  "heapless 0.8.0",
  "httparse",
