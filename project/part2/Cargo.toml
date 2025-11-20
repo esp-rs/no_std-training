@@ -8,6 +8,7 @@ version      = "0.1.0"
 embassy-executor = "0.9.0"
 embassy-net = { version = "0.7.0", features = [
     "dhcpv4",
+    "dns",
     "medium-ethernet",
     "tcp",
     "udp",

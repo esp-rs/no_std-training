@@ -495,7 +495,6 @@ async fn http_client_task(stack: Stack<'static>) {
             "HTTP Client: Connecting to {} ({}:{})...",
             host, remote_ip, remote_port
         );
-
         match socket.connect((remote_ip, remote_port)).await {
             Ok(()) => {
                 debug!("HTTP Client: Connected!");

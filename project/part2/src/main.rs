@@ -10,10 +10,8 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
-use core::net::Ipv4Addr;
-
 use embassy_executor::Spawner;
-use embassy_net::{Runner, StackResources, tcp::TcpSocket};
+use embassy_net::{Runner, StackResources, dns::DnsQueryType, tcp::TcpSocket};
 use embassy_time::{Duration, Timer};
 use esp_alloc as _;
 use esp_hal::{
@@ -130,9 +128,34 @@ async fn main(spawner: Spawner) -> ! {
 
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-        let remote_endpoint = (Ipv4Addr::new(142, 250, 185, 115), 80);
-        debug!("connecting...");
-        let r = socket.connect(remote_endpoint).await;
+        // Connect to www.mobile-j.de
+        let host = "www.mobile-j.de";
+        let remote_port = 80;
+
+        // Resolve hostname using DNS
+        debug!("Resolving {}...", host);
+        let remote_ip = match stack.dns_query(host, DnsQueryType::A).await {
+            Ok(addresses) => {
+                if addresses.is_empty() {
+                    error!("DNS query returned no addresses for {}", host);
+                    debug!("Retrying in 10 seconds...");
+                    Timer::after(Duration::from_secs(10)).await;
+                    continue;
+                }
+                let address = addresses[0];
+                debug!("Resolved {} to {}", host, address);
+                address
+            }
+            Err(e) => {
+                error!("DNS lookup failed for {}: {:?}", host, e);
+                debug!("Retrying in 10 seconds...");
+                Timer::after(Duration::from_secs(10)).await;
+                continue;
+            }
+        };
+
+        debug!("connecting to {} ({}:{})...", host, remote_ip, remote_port);
+        let r = socket.connect((remote_ip, remote_port)).await;
         if let Err(e) = r {
             error!("connect error: {:?}", e);
             continue;
