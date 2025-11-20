@@ -110,10 +110,6 @@ async fn main(spawner: Spawner) -> ! {
         seed,
     );
 
-    // Store stack in static cell for shared access
-    static AP_STACK_CELL: static_cell::StaticCell<Stack<'static>> = static_cell::StaticCell::new();
-    let ap_stack_ref = AP_STACK_CELL.uninit().write(ap_stack);
-
     // Init network stack for STA (client connection)
     static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
         static_cell::StaticCell::new();
@@ -137,14 +133,13 @@ async fn main(spawner: Spawner) -> ! {
         .ok();
     spawner.spawn(net_task(ap_runner)).ok();
     spawner.spawn(sta_net_task(sta_runner)).ok();
-    spawner.spawn(run_dhcp(ap_stack_ref, gw_ip_addr)).ok();
-    spawner
-        .spawn(run_captive_portal(ap_stack_ref, gw_ip_addr))
-        .ok();
+    // Stack is Copy, so we can pass it by value to each task
+    spawner.spawn(run_dhcp(ap_stack, gw_ip_addr)).ok();
+    spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
     spawner.spawn(http_client_task(sta_stack)).ok();
 
     loop {
-        if ap_stack_ref.is_link_up() {
+        if ap_stack.is_link_up() {
             break;
         }
         Timer::after(EmbassyDuration::from_millis(500)).await;
@@ -152,15 +147,15 @@ async fn main(spawner: Spawner) -> ! {
     info!("WiFi Provisioning Portal Ready");
     debug!("1. Connect to the AP: `esp-radio`");
     debug!("2. Navigate to: http://{gw_ip_addr_str}/");
-    while !ap_stack_ref.is_config_up() {
+    while !ap_stack.is_config_up() {
         Timer::after(EmbassyDuration::from_millis(100)).await
     }
-    ap_stack_ref
+    ap_stack
         .config_v4()
         .inspect(|c| debug!("ipv4 config: {c:?}"));
 
     spawner
-        .spawn(run_http_server(ap_stack_ref, wifi_credentials_channel))
+        .spawn(run_http_server(ap_stack, wifi_credentials_channel))
         .ok();
 
     // Keep main task alive
@@ -340,7 +335,7 @@ impl Handler for HttpHandler {
 
 #[embassy_executor::task]
 async fn run_http_server(
-    stack: &'static Stack<'static>,
+    stack: Stack<'static>,
     wifi_credentials_channel: &'static Channel<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
         WifiCredentials,
@@ -354,7 +349,7 @@ async fn run_http_server(
         static_cell::StaticCell::new();
     let buffers = TCP_BUFFERS.uninit().write(TcpBuffers::new());
 
-    let tcp = Tcp::new(*stack, buffers);
+    let tcp = Tcp::new(stack, buffers);
     let mut acceptor = tcp
         .bind(SocketAddr::new(
             core::net::IpAddr::V4(core::net::Ipv4Addr::UNSPECIFIED),
@@ -381,7 +376,7 @@ async fn run_http_server(
 }
 
 #[embassy_executor::task]
-async fn run_dhcp(stack: &'static Stack<'static>, gw_ip_addr: Ipv4Addr) {
+async fn run_dhcp(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     use core::net::{Ipv4Addr, SocketAddrV4};
 
     use edge_dhcp::{
@@ -396,7 +391,7 @@ async fn run_dhcp(stack: &'static Stack<'static>, gw_ip_addr: Ipv4Addr) {
     let mut gw_buf = [Ipv4Addr::UNSPECIFIED];
 
     let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
-    let unbound_socket = Udp::new(*stack, &buffers);
+    let unbound_socket = Udp::new(stack, &buffers);
     let mut bound_socket = unbound_socket
         .bind(core::net::SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
@@ -419,7 +414,7 @@ async fn run_dhcp(stack: &'static Stack<'static>, gw_ip_addr: Ipv4Addr) {
 }
 
 #[embassy_executor::task]
-async fn run_captive_portal(stack: &'static Stack<'static>, gw_ip_addr: Ipv4Addr) {
+async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     use core::net::{SocketAddr, SocketAddrV4};
     use edge_nal_embassy::{Udp, UdpBuffers};
 
@@ -432,7 +427,7 @@ async fn run_captive_portal(stack: &'static Stack<'static>, gw_ip_addr: Ipv4Addr
     debug!("All DNS queries will resolve to {gw_ip_addr}");
 
     let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
-    let udp_stack = Udp::new(*stack, &buffers);
+    let udp_stack = Udp::new(stack, &buffers);
 
     loop {
         debug!("Starting Captive Portal DNS server");
