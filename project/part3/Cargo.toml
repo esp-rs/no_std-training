@@ -39,10 +39,9 @@ esp-rtos = { version = "0.2.0", features = [
   "esp-radio",
   # "log-04",
 ] }
-futures-lite = { version = "2.6.1", default-features = false }
 heapless = "0.8.0"
 log = "0.4.28"
-picoserve = { version = "0.15.0", default-features = false, features = ["embassy"] }
+edge-http = { version = "0.6.1", default-features = false, features = ["embedded-io-async", "edge-nal"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 static_cell = "2.1.1"
 
