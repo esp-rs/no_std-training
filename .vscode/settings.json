@@ -1,0 +1,10 @@
+{
+    "rust-analyzer.cargo.target": "riscv32imc-unknown-none-elf",
+    "rust-analyzer.cargo.buildScripts.useRustcWrapper": true,
+    "rust-analyzer.cargo.allTargets": false,
+    "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.showUnlinkedFileNotification": false,
+    "rust-analyzer.linkedProjects": [
+        "project/part6/Cargo.toml"
+    ]
+}
