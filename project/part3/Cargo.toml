@@ -39,10 +39,11 @@ esp-rtos = { version = "0.2.0", features = [
   "esp-radio",
   # "log-04",
 ] }
-heapless = "0.8.0"
+heapless = { version = "0.8.0", features = ["serde"] }
 log = "0.4.28"
 edge-http = { version = "0.6.1", default-features = false, features = ["io", "embedded-io-async", "edge-nal"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde-json-core = "0.6.0"
 static_cell = "2.1.1"
 
 [profile.dev]
