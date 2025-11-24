@@ -83,7 +83,7 @@ const BROKER_HOST: Option<&'static str> = option_env!("BROKER_HOST");
 const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
 const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize)]
 struct WifiCredentials {
     ssid: heapless::String<32>,
     password: heapless::String<64>,
@@ -254,60 +254,6 @@ async fn main(spawner: Spawner) -> ! {
     }
 }
 
-// Simple URL decoding
-fn url_decode(input: &str) -> heapless::String<256> {
-    let mut result = heapless::String::<256>::new();
-    let mut chars = input.chars();
-
-    while let Some(ch) = chars.next() {
-        match ch {
-            '+' => {
-                result.push(' ').ok();
-            }
-            '%' => {
-                let hex1 = chars.next().and_then(|c| c.to_digit(16));
-                let hex2 = chars.next().and_then(|c| c.to_digit(16));
-                if let (Some(d1), Some(d2)) = (hex1, hex2) {
-                    result.push(char::from((d1 * 16 + d2) as u8)).ok();
-                } else {
-                    result.push(ch).ok();
-                }
-            }
-            _ => {
-                result.push(ch).ok();
-            }
-        }
-    }
-    result
-}
-
-// Parse form data from URL-encoded body
-fn parse_form_data(body: &[u8]) -> Option<WifiCredentials> {
-    let body_str = core::str::from_utf8(body).ok()?;
-    let mut ssid = None;
-    let mut password = heapless::String::<64>::new();
-
-    for pair in body_str.split('&') {
-        let (key, value) = pair.split_once('=')?;
-        let decoded = url_decode(value);
-
-        match key {
-            "ssid" => ssid = heapless::String::from_str(&decoded).ok(),
-            "password" => {
-                if let Ok(pwd) = heapless::String::from_str(&decoded) {
-                    password = pwd;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    Some(WifiCredentials {
-        ssid: ssid?,
-        password,
-    })
-}
-
 // HTTP Handler implementation
 struct HttpHandler {
     wifi_credentials_channel: &'static Channel<
@@ -365,6 +311,15 @@ impl Handler for HttpHandler {
                 .await?;
                 conn.write_all(HOME_HTML.as_bytes()).await?;
             }
+            (Method::Get, "/saved") => {
+                conn.initiate_response(
+                    200,
+                    Some("OK"),
+                    &[("Content-Type", "text/html; charset=utf-8")],
+                )
+                .await?;
+                conn.write_all(SAVED_HTML.as_bytes()).await?;
+            }
             (Method::Post, "/save") => {
                 // Read request body
                 let mut body = heapless::Vec::<u8, 512>::new();
@@ -383,7 +338,10 @@ impl Handler for HttpHandler {
                     }
                 }
 
-                match parse_form_data(&body) {
+                match serde_json_core::from_slice::<WifiCredentials>(&body)
+                    .ok()
+                    .map(|(credentials, _)| credentials)
+                {
                     Some(credentials) => {
                         debug!(
                             "WiFi Credentials Received: SSID: {} | Password: {}",

@@ -24,11 +24,36 @@
             <p>IP Address: <strong>192.168.2.1</strong></p>
         </div>
         <h2>Configure WiFi</h2>
-        <form action='/save' method='post'>
-            <input type='text' name='ssid' placeholder='WiFi SSID' required>
-            <input type='password' name='password' placeholder='WiFi Password' required>
+        <form id='wifi-form'>
+            <input type='text' id='ssid' placeholder='WiFi SSID' required>
+            <input type='password' id='password' placeholder='WiFi Password' required>
             <button type='submit'>Save Configuration</button>
         </form>
+        <script>
+            document.getElementById('wifi-form').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const ssid = document.getElementById('ssid').value;
+                const password = document.getElementById('password').value;
+
+                try {
+                    const response = await fetch('/save', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ ssid, password })
+                    });
+
+                    if (response.ok) {
+                        window.location.href = '/saved';
+                    } else {
+                        alert('Failed to save configuration');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            });
+        </script>
         <p style='text-align: center; color: #999; margin-top: 20px;'>Powered by Rust & Embassy</p>
     </div>
 </body>

@@ -42,10 +42,11 @@ esp-rtos = { version = "0.2.0", features = [
   # "log-04",
 ] }
 esp-storage = { version = "0.8.1", features = ["esp32c3"] }
-heapless = "0.8.0"
+heapless = { version = "0.8.0", features = ["serde"] }
 log = "0.4.28"
 rust-mqtt = { version = "0.3.0", default-features = false }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
+serde-json-core = "0.6.0"
 shtcx = { git = "https://github.com/Fristi/shtcx-rs", branch = "feature/async-support" }
 static_cell = "2.1.1"
 
