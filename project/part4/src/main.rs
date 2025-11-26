@@ -28,6 +28,7 @@ use embassy_net::{
 };
 use embassy_time::{Duration, Timer};
 use esp_alloc as _;
+use esp_backtrace as _;
 use esp_hal::{
     clock::CpuClock,
     i2c::master::{Config, I2c},
@@ -50,11 +51,6 @@ use shtcx::{
     self,
     asynchronous::{PowerMode, max_measurement_duration, shtc3},
 };
-
-#[panic_handler]
-fn panic(_: &core::panic::PanicInfo) -> ! {
-    loop {}
-}
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
