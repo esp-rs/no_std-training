@@ -24,12 +24,10 @@ fn linker_be_nice() {
                     eprintln!("💡 Is the linker script `linkall.x` missing?");
                     eprintln!();
                 }
-                "esp_wifi_preempt_enable"
-                | "esp_wifi_preempt_yield_task"
-                | "esp_wifi_preempt_task_create" => {
+                "esp_rtos_initialized" | "esp_rtos_yield_task" | "esp_rtos_task_create" => {
                     eprintln!();
                     eprintln!(
-                        "💡 `esp-wifi` has no scheduler enabled. Make sure you have the `builtin-scheduler` feature enabled, or that you provide an external scheduler."
+                        "💡 `esp-radio` has no scheduler enabled. Make sure you have initialized `esp-rtos` or provided an external scheduler."
                     );
                     eprintln!();
                 }
