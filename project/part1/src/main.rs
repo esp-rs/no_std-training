@@ -54,7 +54,6 @@ async fn main(spawner: Spawner) -> ! {
             .expect("Failed to get raw ID register")
     );
 
-    // TODO: Spawn some tasks
     let _ = spawner;
 
     loop {
