@@ -96,23 +96,18 @@ impl Handler for HttpHandler {
             }
             (Method::Post, "/save") => {
                 // Read request body
-                let mut body = heapless::Vec::<u8, 512>::new();
                 let mut buf = [0u8; 256];
-                loop {
-                    match conn.read(&mut buf).await {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            for &b in &buf[..n] {
-                                if body.push(b).is_err() {
-                                    break;
-                                }
-                            }
-                        }
-                        Err(e) => return Err(e),
+                let n = match conn.read(&mut buf).await {
+                    Ok(0) => {
+                        conn.initiate_response(400, Some("Bad Request"), &[])
+                            .await?;
+                        return Ok(());
                     }
-                }
+                    Ok(n) => n,
+                    Err(e) => return Err(e),
+                };
 
-                match serde_json_core::from_slice::<WifiCredentials>(&body)
+                match serde_json_core::from_slice::<WifiCredentials>(&buf[..n])
                     .ok()
                     .map(|(credentials, _)| credentials)
                 {
