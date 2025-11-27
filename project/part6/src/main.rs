@@ -94,14 +94,7 @@ async fn main(spawner: Spawner) -> ! {
         .with_sda(sda)
         .with_scl(scl)
         .into_async();
-    let mut sht = shtc3(i2c);
-
-    debug!(
-        "Raw ID register: {}",
-        sht.raw_id_register()
-            .await
-            .expect("Failed to get raw ID register")
-    );
+    let sht = shtc3(i2c);
 
     // Set up button on GPIO9 (BOOT button on ESP32-C3)
     let button_pin = peripherals.GPIO9;

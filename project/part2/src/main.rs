@@ -62,13 +62,6 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let mut sht = shtc3(i2c);
 
-    debug!(
-        "Raw ID register: {}",
-        sht.raw_id_register()
-            .await
-            .expect("Failed to get raw ID register")
-    );
-
     static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
         static_cell::StaticCell::new();
     let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL

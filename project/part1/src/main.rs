@@ -18,7 +18,7 @@ use esp_hal::{
     i2c::master::{Config, I2c},
     timer::timg::TimerGroup,
 };
-use log::{debug, error, info};
+use log::{error, info};
 use shtcx::{
     self,
     asynchronous::{PowerMode, max_measurement_duration, shtc3},
@@ -46,13 +46,6 @@ async fn main(spawner: Spawner) -> ! {
         .with_scl(scl)
         .into_async();
     let mut sht = shtc3(i2c);
-
-    debug!(
-        "Raw ID register: {}",
-        sht.raw_id_register()
-            .await
-            .expect("Failed to get raw ID register")
-    );
 
     let _ = spawner;
 
