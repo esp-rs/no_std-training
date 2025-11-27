@@ -161,8 +161,8 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(EmbassyDuration::from_millis(500)).await;
     }
     info!("WiFi Provisioning Portal Ready");
-    debug!("1. Connect to the AP: `esp-radio`");
-    debug!("2. Navigate to: http://{gw_ip_addr_str}/");
+    info!("1. Connect to the AP: `esp-radio`");
+    info!("2. Navigate to: http://{gw_ip_addr_str}/");
     while !ap_stack.is_config_up() {
         Timer::after(EmbassyDuration::from_millis(100)).await
     }
