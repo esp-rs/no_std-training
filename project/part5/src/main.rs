@@ -530,37 +530,39 @@ async fn mqtt_task(
     stack: Stack<'static>,
     mut sht: ShtC3<esp_hal::i2c::master::I2c<'static, esp_hal::Async>>,
 ) {
-    // Wait for WiFi connection
-    debug!("MQTT: Waiting for WiFi link to come up...");
-    stack.wait_link_up().await;
-    debug!("MQTT: WiFi link up, waiting for network configuration...");
-
-    // Wait for DHCP to assign an IP address
-    loop {
-        if stack.is_config_up() {
-            break;
-        }
-        Timer::after(EmbassyDuration::from_millis(100)).await;
-    }
-
-    debug!("Waiting to get IP address...");
-    loop {
-        if let Some(config) = stack.config_v4() {
-            debug!("Got IP: {}", config.address);
-            break;
-        }
-        Timer::after(EmbassyDuration::from_millis(500)).await;
-    }
-
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
     loop {
+        // Wait for network to be ready before attempting connection
+        debug!("MQTT: Waiting for WiFi link to come up...");
+        stack.wait_link_up().await;
+        debug!("MQTT: WiFi link up, waiting for network configuration...");
+
+        // Wait for DHCP to assign an IP address
+        loop {
+            if stack.is_config_up() {
+                break;
+            }
+            Timer::after(EmbassyDuration::from_millis(100)).await;
+        }
+
+        debug!("MQTT: Waiting to get IP address...");
+        loop {
+            if let Some(config) = stack.config_v4() {
+                debug!("MQTT: Got IP: {}", config.address);
+                break;
+            }
+            Timer::after(EmbassyDuration::from_millis(500)).await;
+        }
+
+        // Check if we still have a valid network config before proceeding
+        if !stack.is_config_up() {
+            debug!("MQTT: Network config lost, retrying...");
+            continue;
+        }
+
         Timer::after(EmbassyDuration::from_millis(1_000)).await;
-
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-
-        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
         let host = match BROKER_HOST {
             Some(h) => h,
@@ -568,6 +570,7 @@ async fn mqtt_task(
                 error!(
                     "No BROKER_HOST set. Provide e.g. BROKER_HOST=10.0.0.10 (or hostname) and optional BROKER_PORT."
                 );
+                Timer::after(EmbassyDuration::from_secs(5)).await;
                 continue;
             }
         };
@@ -585,16 +588,21 @@ async fn mqtt_task(
                 Ok(address) => address,
                 Err(e) => {
                     error!("DNS lookup error: {e:?}");
+                    Timer::after(EmbassyDuration::from_secs(5)).await;
                     continue;
                 }
             }
         };
+
+        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
         let remote_endpoint = (address, port);
         info!("connecting to MQTT broker at {}:{}...", host, port);
         let connection = socket.connect(remote_endpoint).await;
         if let Err(e) = connection {
             error!("connect error: {:?}", e);
+            Timer::after(EmbassyDuration::from_secs(5)).await;
             continue;
         }
         info!("connected!");
@@ -634,7 +642,14 @@ async fn mqtt_task(
             },
         }
 
+        // Main sensor reading and publishing loop
         loop {
+            // Check network state before attempting operations
+            if !stack.is_link_up() || !stack.is_config_up() {
+                debug!("MQTT: Network connection lost, reconnecting...");
+                break;
+            }
+
             // Read sensor
             if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
                 error!("Failed to start measurement: {:?}", e);
@@ -673,8 +688,14 @@ async fn mqtt_task(
 
             // Helper to handle MQTT send errors
             let handle_mqtt_error = |mqtt_error: ReasonCode| match mqtt_error {
-                ReasonCode::NetworkError => error!("MQTT Network Error"),
-                _ => error!("Other MQTT Error: {:?}", mqtt_error),
+                ReasonCode::NetworkError => {
+                    error!("MQTT Network Error");
+                    true // Signal to break out of inner loop
+                }
+                _ => {
+                    error!("Other MQTT Error: {:?}", mqtt_error);
+                    false // Continue in inner loop
+                }
             };
 
             // MQTT
@@ -687,7 +708,9 @@ async fn mqtt_task(
                 )
                 .await
             {
-                handle_mqtt_error(e);
+                if handle_mqtt_error(e) {
+                    break; // Network error, reconnect
+                }
                 continue;
             }
 
@@ -700,7 +723,9 @@ async fn mqtt_task(
                 )
                 .await
             {
-                handle_mqtt_error(e);
+                if handle_mqtt_error(e) {
+                    break; // Network error, reconnect
+                }
                 continue;
             }
 

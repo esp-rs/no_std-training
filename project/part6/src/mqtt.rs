@@ -16,41 +16,41 @@ const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
 
 #[embassy_executor::task]
 pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_hal::Async>>) {
-    // Wait for WiFi connection
-    debug!("MQTT: Waiting for WiFi link to come up...");
-    stack.wait_link_up().await;
-    debug!("MQTT: WiFi link up, waiting for network configuration...");
-
-    // Wait for DHCP to assign an IP address
-    debug!("MQTT: Waiting for network configuration...");
-    loop {
-        if stack.is_config_up() {
-            break;
-        }
-        Timer::after(EmbassyDuration::from_millis(100)).await;
-    }
-    debug!("MQTT: Network configuration ready");
-
-    debug!("MQTT: Waiting to get IP address...");
-    loop {
-        if let Some(config) = stack.config_v4() {
-            debug!("MQTT: Got IP: {}", config.address);
-            break;
-        }
-        Timer::after(EmbassyDuration::from_millis(500)).await;
-    }
-
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
-    debug!("MQTT: Starting MQTT connection loop...");
-
     loop {
-        debug!("MQTT: Attempting to connect to broker...");
-        Timer::after(EmbassyDuration::from_millis(1_000)).await;
+        // Wait for network to be ready before attempting connection
+        debug!("MQTT: Waiting for WiFi link to come up...");
+        stack.wait_link_up().await;
+        debug!("MQTT: WiFi link up, waiting for network configuration...");
 
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+        // Wait for DHCP to assign an IP address
+        loop {
+            if stack.is_config_up() {
+                break;
+            }
+            Timer::after(EmbassyDuration::from_millis(100)).await;
+        }
+        debug!("MQTT: Network configuration ready");
+
+        debug!("MQTT: Waiting to get IP address...");
+        loop {
+            if let Some(config) = stack.config_v4() {
+                debug!("MQTT: Got IP: {}", config.address);
+                break;
+            }
+            Timer::after(EmbassyDuration::from_millis(500)).await;
+        }
+
+        // Check if we still have a valid network config before proceeding
+        if !stack.is_config_up() {
+            debug!("MQTT: Network config lost, retrying...");
+            continue;
+        }
+
+        debug!("MQTT: Starting MQTT connection loop...");
+        Timer::after(EmbassyDuration::from_millis(1_000)).await;
 
         let host = match BROKER_HOST {
             Some(h) => {
@@ -78,16 +78,21 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
                 Ok(address) => address,
                 Err(e) => {
                     error!("DNS lookup error: {e:?}");
+                    Timer::after(EmbassyDuration::from_secs(5)).await;
                     continue;
                 }
             },
         };
+
+        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
         let remote_endpoint = (address, port);
         info!("connecting to MQTT broker at {}:{}...", host, port);
         let connection = socket.connect(remote_endpoint).await;
         if let Err(e) = connection {
             error!("connect error: {:?}", e);
+            Timer::after(EmbassyDuration::from_secs(5)).await;
             continue;
         }
         info!("connected!");
@@ -121,7 +126,14 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             continue;
         }
 
+        // Main sensor reading and publishing loop
         loop {
+            // Check network state before attempting operations
+            if !stack.is_link_up() || !stack.is_config_up() {
+                debug!("MQTT: Network connection lost, reconnecting...");
+                break;
+            }
+
             // Read sensor
             let (temp, humidity) = match read_sensor(&mut sht).await {
                 Some(reading) => reading,
@@ -142,8 +154,14 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
             // Helper to handle MQTT send errors
             let handle_mqtt_error = |mqtt_error: ReasonCode| match mqtt_error {
-                ReasonCode::NetworkError => error!("MQTT Network Error"),
-                _ => error!("Other MQTT Error: {:?}", mqtt_error),
+                ReasonCode::NetworkError => {
+                    error!("MQTT Network Error");
+                    true // Signal to break out of inner loop
+                }
+                _ => {
+                    error!("Other MQTT Error: {:?}", mqtt_error);
+                    false // Continue in inner loop
+                }
             };
 
             // Publish temperature
@@ -156,7 +174,9 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
                 )
                 .await
             {
-                handle_mqtt_error(e);
+                if handle_mqtt_error(e) {
+                    break; // Network error, reconnect
+                }
                 continue;
             }
 
@@ -170,7 +190,9 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
                 )
                 .await
             {
-                handle_mqtt_error(e);
+                if handle_mqtt_error(e) {
+                    break; // Network error, reconnect
+                }
                 continue;
             }
 

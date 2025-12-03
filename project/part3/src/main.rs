@@ -492,46 +492,52 @@ async fn sta_net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 async fn http_client_task(stack: Stack<'static>) {
     use embedded_io_async::Write;
 
-    // Wait for WiFi connection
-    debug!("HTTP Client: Waiting for WiFi link to come up...");
-    stack.wait_link_up().await;
-    debug!("HTTP Client: WiFi link up, waiting for network configuration...");
-
-    // Wait for DHCP to assign an IP address
-    loop {
-        if stack.is_config_up() {
-            break;
-        }
-        Timer::after(EmbassyDuration::from_millis(100)).await;
-    }
-
-    // Wait for DNS servers to be configured
-    debug!("HTTP Client: Waiting for DNS servers to be configured...");
-    loop {
-        if let Some(config) = stack.config_v4() {
-            debug!("HTTP Client: Got IP address: {:?}", config.address);
-            debug!("HTTP Client: Gateway: {:?}", config.gateway);
-            debug!("HTTP Client: DNS servers: {:?}", config.dns_servers);
-
-            // Check if we have at least one DNS server
-            if !config.dns_servers.is_empty() {
-                break;
-            }
-        }
-        Timer::after(EmbassyDuration::from_millis(100)).await;
-    }
-
-    // Wait longer for the network to stabilize and routes to be established
-    debug!("HTTP Client: Waiting for network to stabilize...");
-    Timer::after(EmbassyDuration::from_secs(5)).await;
-
-    debug!("HTTP Client: Starting HTTP request...");
-
     // Prepare buffers for TCP socket
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
     loop {
+        // Wait for network to be ready before attempting connection
+        debug!("HTTP Client: Waiting for WiFi link to come up...");
+        stack.wait_link_up().await;
+        debug!("HTTP Client: WiFi link up, waiting for network configuration...");
+
+        // Wait for DHCP to assign an IP address
+        loop {
+            if stack.is_config_up() {
+                break;
+            }
+            Timer::after(EmbassyDuration::from_millis(100)).await;
+        }
+
+        // Wait for DNS servers to be configured
+        debug!("HTTP Client: Waiting for DNS servers to be configured...");
+        loop {
+            if let Some(config) = stack.config_v4() {
+                debug!("HTTP Client: Got IP address: {:?}", config.address);
+                debug!("HTTP Client: Gateway: {:?}", config.gateway);
+                debug!("HTTP Client: DNS servers: {:?}", config.dns_servers);
+
+                // Check if we have at least one DNS server
+                if !config.dns_servers.is_empty() {
+                    break;
+                }
+            }
+            Timer::after(EmbassyDuration::from_millis(100)).await;
+        }
+
+        // Check if we still have a valid network config before proceeding
+        if !stack.is_config_up() {
+            debug!("HTTP Client: Network config lost, retrying...");
+            continue;
+        }
+
+        // Wait longer for the network to stabilize and routes to be established
+        debug!("HTTP Client: Waiting for network to stabilize...");
+        Timer::after(EmbassyDuration::from_secs(5)).await;
+
+        debug!("HTTP Client: Starting HTTP request...");
+
         debug!("Making HTTP request");
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
@@ -571,13 +577,26 @@ async fn http_client_task(stack: Stack<'static>) {
             Ok(()) => {
                 debug!("HTTP Client: Connected!");
 
+                // Check network state before sending request
+                if !stack.is_link_up() || !stack.is_config_up() {
+                    debug!("HTTP Client: Network connection lost, reconnecting...");
+                    socket.close();
+                    continue;
+                }
+
                 // Send HTTP/1.0 request
                 let http_request = b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n";
 
                 if let Err(e) = socket.write_all(http_request).await {
                     error!("HTTP Client: Write error: {:?}", e);
+                    socket.close();
+                    Timer::after(EmbassyDuration::from_secs(10)).await;
+                    continue;
                 } else if let Err(e) = socket.flush().await {
                     error!("HTTP Client: Flush error: {:?}", e);
+                    socket.close();
+                    Timer::after(EmbassyDuration::from_secs(10)).await;
+                    continue;
                 } else {
                     debug!("HTTP Client: Request sent, reading response...");
 
@@ -587,6 +606,14 @@ async fn http_client_task(stack: Stack<'static>) {
                     let mut first_chunk = true;
 
                     loop {
+                        // Check network state during read
+                        if !stack.is_link_up() || !stack.is_config_up() {
+                            debug!(
+                                "HTTP Client: Network connection lost during read, reconnecting..."
+                            );
+                            break;
+                        }
+
                         match socket.read(&mut response_buffer).await {
                             Ok(0) => {
                                 debug!("HTTP Client: Connection closed by server");
