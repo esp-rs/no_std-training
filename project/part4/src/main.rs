@@ -125,12 +125,7 @@ async fn main(spawner: Spawner) -> ! {
         debug!("WiFi link up, waiting for network configuration...");
 
         // Wait for DHCP to assign an IP address
-        loop {
-            if stack.is_config_up() {
-                break;
-            }
-            Timer::after(Duration::from_millis(100)).await;
-        }
+        stack.wait_config_up().await;
 
         debug!("Waiting to get IP address...");
         loop {

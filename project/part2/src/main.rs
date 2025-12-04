@@ -100,12 +100,7 @@ async fn main(spawner: Spawner) -> ! {
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
-    loop {
-        if stack.is_link_up() {
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
+    stack.wait_link_up().await;
 
     debug!("Waiting to get IP address...");
     loop {

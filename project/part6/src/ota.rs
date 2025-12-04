@@ -24,15 +24,8 @@ async fn download_and_flash_firmware(
     >,
 ) -> Result<(), ()> {
     // Ensure network is ready
-    if !stack.is_link_up() {
-        error!("HTTP Client: Network link is not up");
-        return Err(());
-    }
-
-    if !stack.is_config_up() {
-        error!("HTTP Client: Network is not configured");
-        return Err(());
-    }
+    stack.wait_link_up().await;
+    stack.wait_config_up().await;
 
     // Small delay before connecting
     Timer::after(EmbassyDuration::from_millis(500)).await;
@@ -211,13 +204,8 @@ pub async fn http_client_task(
     debug!("HTTP Client: Waiting for WiFi connection...");
 
     // Wait for network to be configured (which means WiFi is connected)
-    loop {
-        if stack.is_config_up() {
-            debug!("HTTP Client: Network configured, WiFi is connected");
-            break;
-        }
-        Timer::after(EmbassyDuration::from_millis(100)).await;
-    }
+    stack.wait_config_up().await;
+    debug!("HTTP Client: Network configured, WiFi is connected");
     debug!("HTTP Client: WiFi connected, network configuration ready");
 
     // Wait for network to be fully ready

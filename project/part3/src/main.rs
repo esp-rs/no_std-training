@@ -144,18 +144,11 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
     spawner.spawn(http_client_task(sta_stack)).ok();
 
-    loop {
-        if ap_stack.is_link_up() {
-            break;
-        }
-        Timer::after(EmbassyDuration::from_millis(500)).await;
-    }
+    ap_stack.wait_link_up().await;
     info!("WiFi Provisioning Portal Ready");
     info!("1. Connect to the AP: `esp-radio`");
     info!("2. Navigate to: http://{gw_ip_addr_str}/");
-    while !ap_stack.is_config_up() {
-        Timer::after(EmbassyDuration::from_millis(100)).await
-    }
+    ap_stack.wait_config_up().await;
     ap_stack
         .config_v4()
         .inspect(|c| debug!("ipv4 config: {c:?}"));
@@ -503,12 +496,7 @@ async fn http_client_task(stack: Stack<'static>) {
         debug!("HTTP Client: WiFi link up, waiting for network configuration...");
 
         // Wait for DHCP to assign an IP address
-        loop {
-            if stack.is_config_up() {
-                break;
-            }
-            Timer::after(EmbassyDuration::from_millis(100)).await;
-        }
+        stack.wait_config_up().await;
 
         // Wait for DNS servers to be configured
         debug!("HTTP Client: Waiting for DNS servers to be configured...");

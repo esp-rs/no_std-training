@@ -26,12 +26,7 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
         debug!("MQTT: WiFi link up, waiting for network configuration...");
 
         // Wait for DHCP to assign an IP address
-        loop {
-            if stack.is_config_up() {
-                break;
-            }
-            Timer::after(EmbassyDuration::from_millis(100)).await;
-        }
+        stack.wait_config_up().await;
         debug!("MQTT: Network configuration ready");
 
         debug!("MQTT: Waiting to get IP address...");
