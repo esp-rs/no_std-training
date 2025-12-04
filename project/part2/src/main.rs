@@ -10,9 +10,13 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
+extern crate alloc;
+
+use alloc::format;
 use embassy_executor::Spawner;
 use embassy_net::{Runner, StackResources, dns::DnsQueryType, tcp::TcpSocket};
 use embassy_time::{Duration, Timer};
+use embedded_io_async::Write;
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
@@ -113,70 +117,6 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     loop {
-        // HTTP Request
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-
-        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
-
-        // Connect to www.mobile-j.de
-        let host = "www.mobile-j.de";
-        let remote_port = 80;
-
-        // Resolve hostname using DNS
-        debug!("Resolving {}...", host);
-        let remote_ip = match stack.dns_query(host, DnsQueryType::A).await {
-            Ok(addresses) => {
-                if addresses.is_empty() {
-                    error!("DNS query returned no addresses for {}", host);
-                    debug!("Retrying in 10 seconds...");
-                    Timer::after(Duration::from_secs(10)).await;
-                    continue;
-                }
-                let address = addresses[0];
-                debug!("Resolved {} to {}", host, address);
-                address
-            }
-            Err(e) => {
-                error!("DNS lookup failed for {}: {:?}", host, e);
-                debug!("Retrying in 10 seconds...");
-                Timer::after(Duration::from_secs(10)).await;
-                continue;
-            }
-        };
-
-        debug!("connecting to {} ({}:{})...", host, remote_ip, remote_port);
-        let r = socket.connect((remote_ip, remote_port)).await;
-        if let Err(e) = r {
-            error!("connect error: {:?}", e);
-            continue;
-        }
-        info!("connected!");
-        let mut buf = [0; 1024];
-        loop {
-            use embedded_io_async::Write;
-            let r = socket
-                .write_all(b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n")
-                .await;
-            if let Err(e) = r {
-                error!("write error: {:?}", e);
-                break;
-            }
-            let n = match socket.read(&mut buf).await {
-                Ok(0) => {
-                    debug!("read EOF");
-                    break;
-                }
-                Ok(n) => n,
-                Err(e) => {
-                    error!("read error: {:?}", e);
-                    break;
-                }
-            };
-            info!(
-                "{}",
-                core::str::from_utf8(&buf[..n]).expect("Failed to convert to UTF-8")
-            );
-        }
         // Read sensor
         if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
             error!("Failed to start measurement: {:?}", e);
@@ -200,6 +140,79 @@ async fn main(spawner: Spawner) -> ! {
             measurement.temperature.as_degrees_celsius(),
             measurement.humidity.as_percent(),
         );
+
+        // Prepare HTTP payload (JSON)
+        let temperature = format!("{:.2}", measurement.temperature.as_degrees_celsius());
+        let humidity = format!("{:.2}", measurement.humidity.as_percent());
+        let body = format!(
+            r#"{{"temperature":{},"humidity":{}}}"#,
+            temperature, humidity
+        );
+
+        // HTTP target
+        let host = "www.mobile-j.de";
+        let remote_port: u16 = 80;
+        let path = "/sensor";
+
+        // Resolve hostname using DNS
+        debug!("Resolving {}...", host);
+        let remote_ip = match stack.dns_query(host, DnsQueryType::A).await {
+            Ok(addresses) => {
+                if addresses.is_empty() {
+                    error!("DNS query returned no addresses for {}", host);
+                    debug!("Retrying in 5 seconds...");
+                    Timer::after(Duration::from_secs(5)).await;
+                    continue;
+                }
+                let address = addresses[0];
+                debug!("Resolved {} to {}", host, address);
+                address
+            }
+            Err(e) => {
+                error!("DNS lookup failed for {}: {:?}", host, e);
+                debug!("Retrying in 5 seconds...");
+                Timer::after(Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+
+        // Open TCP connection
+        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+        debug!("connecting to {} ({}:{})...", host, remote_ip, remote_port);
+        if let Err(e) = socket.connect((remote_ip, remote_port)).await {
+            error!("connect error: {:?}", e);
+            Timer::after(Duration::from_secs(2)).await;
+            continue;
+        }
+
+        // Compose minimal HTTP/1.0 POST request
+        let request_head = format!(
+            "POST {} HTTP/1.0\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            path,
+            host,
+            body.len()
+        );
+
+        // Send request and ignore server response
+        if let Err(e) = socket.write_all(request_head.as_bytes()).await {
+            error!("HTTP write (headers) error: {:?}", e);
+            socket.close();
+            Timer::after(Duration::from_secs(1)).await;
+            continue;
+        }
+        if let Err(e) = socket.write_all(body.as_bytes()).await {
+            error!("HTTP write (body) error: {:?}", e);
+            socket.close();
+            Timer::after(Duration::from_secs(1)).await;
+            continue;
+        }
+        info!("HTTP request sent");
+        // Best effort send; do not wait for any reply
+        let _ = socket.flush().await;
+        socket.close();
+
+        // Small delay before next measurement
         Timer::after(Duration::from_secs(1)).await;
     }
 }
