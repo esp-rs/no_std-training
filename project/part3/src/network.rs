@@ -19,7 +19,6 @@ pub struct WifiCredentials {
 pub struct NetworkStacks {
     pub ap_stack: Stack<'static>,
     pub ap_runner: Runner<'static, WifiDevice<'static>>,
-    pub sta_stack: Stack<'static>,
     pub sta_runner: Runner<'static, WifiDevice<'static>>,
 }
 
@@ -55,7 +54,7 @@ pub fn create_network_stacks(
     // Init network stack for STA (client connection)
     static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
         static_cell::StaticCell::new();
-    let (sta_stack, sta_runner) = embassy_net::new(
+    let (_, sta_runner) = embassy_net::new(
         sta_device,
         sta_config,
         STA_STACK_RESOURCES_CELL
@@ -67,7 +66,6 @@ pub fn create_network_stacks(
     NetworkStacks {
         ap_stack,
         ap_runner,
-        sta_stack,
         sta_runner,
     }
 }

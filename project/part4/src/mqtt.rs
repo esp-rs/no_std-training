@@ -16,10 +16,7 @@ const BROKER_HOST: Option<&'static str> = option_env!("BROKER_HOST");
 const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
 
 #[embassy_executor::task]
-pub async fn mqtt_task(
-    stack: Stack<'static>,
-    mut sht: ShtC3<I2c<'static, esp_hal::Async>>,
-) {
+pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_hal::Async>>) {
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
@@ -136,7 +133,7 @@ pub async fn mqtt_task(
             }
 
             // Read sensor
-            let (temp, humidity) = match read_sensor(&mut sht).await {
+            let (temp, _) = match read_sensor(&mut sht).await {
                 Some(reading) => reading,
                 None => {
                     Timer::after(Duration::from_secs(1)).await;
@@ -145,12 +142,7 @@ pub async fn mqtt_task(
             };
 
             let mut temperature_string: heapless::String<32> = heapless::String::new();
-            write!(
-                temperature_string,
-                "{:.2}",
-                temp
-            )
-            .expect("write! failed!");
+            write!(temperature_string, "{:.2}", temp).expect("write! failed!");
 
             // Helper to handle MQTT send errors
             let handle_mqtt_error = |mqtt_error: ReasonCode| match mqtt_error {

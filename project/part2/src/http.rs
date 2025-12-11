@@ -1,6 +1,6 @@
 use alloc::format;
 use embassy_net::{Stack, dns::DnsQueryType, tcp::TcpSocket};
-use embassy_time::{Duration, Timer};
+use embassy_time::Duration;
 use embedded_io_async::Write;
 use log::{debug, error, info};
 

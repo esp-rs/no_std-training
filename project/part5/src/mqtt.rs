@@ -15,10 +15,7 @@ const BROKER_HOST: Option<&'static str> = option_env!("BROKER_HOST");
 const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
 
 #[embassy_executor::task]
-pub async fn mqtt_task(
-    stack: Stack<'static>,
-    mut sht: ShtC3<I2c<'static, esp_hal::Async>>,
-) {
+pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_hal::Async>>) {
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 

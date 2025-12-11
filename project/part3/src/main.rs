@@ -22,8 +22,7 @@ use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
-    clock::CpuClock, interrupt::software::SoftwareInterruptControl, ram, rng::Rng,
-    timer::timg::TimerGroup,
+    clock::CpuClock, interrupt::software::SoftwareInterruptControl, ram, timer::timg::TimerGroup,
 };
 use esp_radio::Controller;
 use log::{debug, info};
@@ -71,7 +70,6 @@ async fn main(spawner: Spawner) -> ! {
     let NetworkStacks {
         ap_stack,
         ap_runner,
-        sta_stack,
         sta_runner,
     } = create_network_stacks(ap_device, sta_device, gw_ip_addr);
 

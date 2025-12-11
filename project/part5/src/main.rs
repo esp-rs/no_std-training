@@ -38,7 +38,6 @@ use esp_hal::{
     i2c::master::{Config, I2c},
     interrupt::software::SoftwareInterruptControl,
     ram,
-    rng::Rng,
     timer::timg::TimerGroup,
 };
 use esp_radio::Controller;
