@@ -12,11 +12,13 @@
 
 extern crate alloc;
 
-use alloc::format;
+mod http;
+mod network;
+mod sensor;
+
 use embassy_executor::Spawner;
-use embassy_net::{Runner, StackResources, dns::DnsQueryType, tcp::TcpSocket};
-use embassy_time::{Duration, Timer};
-use embedded_io_async::Write;
+use embassy_net::StackResources;
+use embassy_time::Duration;
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
@@ -26,22 +28,17 @@ use esp_hal::{
     rng::Rng,
     timer::timg::TimerGroup,
 };
-use esp_radio::{
-    Controller,
-    wifi::{ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState},
-};
-use log::{debug, error, info};
-use shtcx::{
-    self,
-    asynchronous::{PowerMode, max_measurement_duration, shtc3},
-};
+use esp_radio::Controller;
+use log::debug;
+use shtcx::asynchronous::shtc3;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
+use crate::http::send_sensor_data;
+use crate::network::{connection, net_task};
+use crate::sensor::read_sensor;
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
@@ -97,9 +94,6 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(connection(controller)).ok();
     spawner.spawn(net_task(runner)).ok();
 
-    let mut rx_buffer = [0; 4096];
-    let mut tx_buffer = [0; 4096];
-
     stack.wait_link_up().await;
 
     debug!("Waiting to get IP address...");
@@ -108,148 +102,17 @@ async fn main(spawner: Spawner) -> ! {
             debug!("Got IP: {}", config.address);
             break;
         }
-        Timer::after(Duration::from_millis(500)).await;
+        embassy_time::Timer::after(Duration::from_millis(500)).await;
     }
 
     loop {
         // Read sensor
-        if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
-            error!("Failed to start measurement: {:?}", e);
-            Timer::after(Duration::from_secs(1)).await;
-            continue;
+        if let Some((temp, humidity)) = read_sensor(&mut sht).await {
+            // Send sensor data via HTTP
+            let _ = send_sensor_data(stack, temp, humidity).await;
         }
-        // Wait for 12.1 ms https://github.com/Fristi/shtcx-rs/blob/feature/async-support/src/asynchronous.rs#L413-L424
-        let duration = max_measurement_duration(&sht, PowerMode::NormalMode);
-        Timer::after(Duration::from_micros(duration.into())).await;
-        let measurement = match sht.get_measurement_result().await {
-            Ok(m) => m,
-            Err(e) => {
-                error!("Failed to get measurement result: {:?}", e);
-                Timer::after(Duration::from_secs(1)).await;
-                continue;
-            }
-        };
-
-        info!(
-            "  {:.2} °C | {:.2} %RH",
-            measurement.temperature.as_degrees_celsius(),
-            measurement.humidity.as_percent(),
-        );
-
-        // Prepare HTTP payload (JSON)
-        let temperature = format!("{:.2}", measurement.temperature.as_degrees_celsius());
-        let humidity = format!("{:.2}", measurement.humidity.as_percent());
-        let body = format!(
-            r#"{{"temperature":{},"humidity":{}}}"#,
-            temperature, humidity
-        );
-
-        // HTTP target
-        let host = "www.mobile-j.de";
-        let remote_port: u16 = 80;
-        let path = "/sensor";
-
-        // Resolve hostname using DNS
-        debug!("Resolving {}...", host);
-        let remote_ip = match stack.dns_query(host, DnsQueryType::A).await {
-            Ok(addresses) => {
-                if addresses.is_empty() {
-                    error!("DNS query returned no addresses for {}", host);
-                    debug!("Retrying in 5 seconds...");
-                    Timer::after(Duration::from_secs(5)).await;
-                    continue;
-                }
-                let address = addresses[0];
-                debug!("Resolved {} to {}", host, address);
-                address
-            }
-            Err(e) => {
-                error!("DNS lookup failed for {}: {:?}", host, e);
-                debug!("Retrying in 5 seconds...");
-                Timer::after(Duration::from_secs(5)).await;
-                continue;
-            }
-        };
-
-        // Open TCP connection
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
-        debug!("connecting to {} ({}:{})...", host, remote_ip, remote_port);
-        if let Err(e) = socket.connect((remote_ip, remote_port)).await {
-            error!("connect error: {:?}", e);
-            Timer::after(Duration::from_secs(2)).await;
-            continue;
-        }
-
-        // Compose minimal HTTP/1.0 POST request
-        let request_head = format!(
-            "POST {} HTTP/1.0\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
-            path,
-            host,
-            body.len()
-        );
-
-        // Send request and ignore server response
-        if let Err(e) = socket.write_all(request_head.as_bytes()).await {
-            error!("HTTP write (headers) error: {:?}", e);
-            socket.close();
-            Timer::after(Duration::from_secs(1)).await;
-            continue;
-        }
-        if let Err(e) = socket.write_all(body.as_bytes()).await {
-            error!("HTTP write (body) error: {:?}", e);
-            socket.close();
-            Timer::after(Duration::from_secs(1)).await;
-            continue;
-        }
-        info!("HTTP request sent");
-        // Best effort send; do not wait for any reply
-        let _ = socket.flush().await;
-        socket.close();
 
         // Small delay before next measurement
-        Timer::after(Duration::from_secs(1)).await;
+        embassy_time::Timer::after(Duration::from_secs(1)).await;
     }
-}
-
-#[embassy_executor::task]
-async fn connection(mut controller: WifiController<'static>) {
-    debug!("start connection task");
-    debug!("Device capabilities: {:?}", controller.capabilities());
-    loop {
-        if esp_radio::wifi::sta_state() == WifiStaState::Connected {
-            controller.wait_for_event(WifiEvent::StaDisconnected).await;
-            Timer::after(Duration::from_millis(5000)).await;
-        }
-        if !matches!(controller.is_started(), Ok(true)) {
-            let client_config = ModeConfig::Client(
-                ClientConfig::default()
-                    .with_ssid(SSID.into())
-                    .with_password(PASSWORD.into()),
-            );
-            controller
-                .set_config(&client_config)
-                .expect("Failed to set WiFi configuration");
-            debug!("Starting wifi");
-            controller
-                .start_async()
-                .await
-                .expect("Failed to start WiFi");
-            debug!("Wifi started!");
-        }
-        debug!("About to connect...");
-
-        match controller.connect_async().await {
-            Ok(_) => info!("Wifi connected!"),
-            Err(e) => {
-                error!("Failed to connect to wifi: {e:?}");
-                Timer::after(Duration::from_millis(5000)).await
-            }
-        }
-    }
-}
-
-#[embassy_executor::task]
-async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
-    runner.run().await
 }
