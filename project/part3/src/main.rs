@@ -1,4 +1,4 @@
-// Wifi Provisioning
+// WiFi Provisioning
 // 1. Run the app
 // cargo r -r
 #![no_std]

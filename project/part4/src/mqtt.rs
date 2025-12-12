@@ -63,17 +63,21 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             .unwrap_or(1884);
 
         // If host is an IPv4 literal, bypass DNS
-        let address = if let Ok(ipv4) = host.parse::<Ipv4Address>() {
-            IpAddress::Ipv4(ipv4)
-        } else {
-            match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
-                Ok(address) => address,
+        let address = match host.parse::<Ipv4Address>() {
+            Ok(ipv4) => IpAddress::Ipv4(ipv4),
+            Err(_) => match stack.dns_query(host, DnsQueryType::A).await {
+                Ok(addresses) if !addresses.is_empty() => addresses[0],
+                Ok(_) => {
+                    error!("DNS query returned no addresses for {}", host);
+                    Timer::after(Duration::from_secs(5)).await;
+                    continue;
+                }
                 Err(e) => {
                     error!("DNS lookup error: {e:?}");
                     Timer::after(Duration::from_secs(5)).await;
                     continue;
                 }
-            }
+            },
         };
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);

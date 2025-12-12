@@ -44,10 +44,10 @@ jobs:
           toolchain: nightly
           components: rust-src, rustfmt, clippy
 
-      - run: cargo build --release
+      - run: cargo fmt --all -- --check
         working-directory: ${{ matrix.project }}
 
-      - run: cargo fmt --all -- --check
+      - run: cargo build --release
         working-directory: ${{ matrix.project }}
 
       - run: cargo clippy -- -D warnings

@@ -1,4 +1,4 @@
-// MQTT Communication (with wifi provisioning)
+// MQTT Communication (with WiFi provisioning)
 // 1. Install tools
 // cargo install --git https://github.com/bytebeamio/rumqtt rumqttd
 // brew install mosquitto / https://mosquitto.org/download/

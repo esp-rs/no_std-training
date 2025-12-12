@@ -15,7 +15,7 @@ esp-hal = { version = "1.0.0", features = [
   "esp32c3",
   "unstable",
 ] }
-esp-println = { version = "0.16.1", features = ["esp32c3"] }
+esp-println = { version = "0.16.1", features = ["esp32c3", "log-04"] }
 esp-rtos = { version = "0.2.0", features = [
   "embassy",
   "esp32c3",

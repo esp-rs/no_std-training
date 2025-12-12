@@ -1,3 +1,4 @@
+use core::fmt::Write;
 use embassy_net::{IpAddress, Ipv4Address, Stack, dns::DnsQueryType, tcp::TcpSocket};
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use log::{debug, error, info};
@@ -69,8 +70,13 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
         // If host is an IPv4 literal, bypass DNS
         let address = match host.parse::<Ipv4Address>() {
             Ok(ipv4) => IpAddress::Ipv4(ipv4),
-            Err(_) => match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
-                Ok(address) => address,
+            Err(_) => match stack.dns_query(host, DnsQueryType::A).await {
+                Ok(addresses) if !addresses.is_empty() => addresses[0],
+                Ok(_) => {
+                    error!("DNS query returned no addresses for {}", host);
+                    Timer::after(EmbassyDuration::from_secs(5)).await;
+                    continue;
+                }
                 Err(e) => {
                     error!("DNS lookup error: {e:?}");
                     Timer::after(EmbassyDuration::from_secs(5)).await;
@@ -140,12 +146,10 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
             // Format sensor values
             let mut temperature_string = heapless::String::<32>::new();
-            core::fmt::Write::write_fmt(&mut temperature_string, format_args!("{:.2}", temp))
-                .expect("write! failed!");
+            write!(temperature_string, "{:.2}", temp).expect("write! failed!");
 
             let mut humidity_string = heapless::String::<32>::new();
-            core::fmt::Write::write_fmt(&mut humidity_string, format_args!("{:.2}", humidity))
-                .expect("write! failed!");
+            write!(humidity_string, "{:.2}", humidity).expect("write! failed!");
 
             // Helper to handle MQTT send errors
             let handle_mqtt_error = |mqtt_error: ReasonCode| match mqtt_error {

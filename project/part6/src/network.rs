@@ -119,7 +119,7 @@ pub async fn connection(
     controller.stop_async().await.expect("Failed to stop WiFi");
     debug!("AP stopped");
 
-    Timer::after(EmbassyDuration::from_millis(1000)).await;
+    Timer::after(EmbassyDuration::from_secs(1)).await;
 
     // Configure and start station mode
     debug!("Configuring station mode...");
@@ -140,15 +140,15 @@ pub async fn connection(
     debug!("WiFi station started!");
 
     // Connect to the network
-    debug!("Connecting to WiFi network...");
+    info!("Connecting to WiFi network...");
     loop {
         match controller.connect_async().await {
             Ok(()) => {
-                debug!("Successfully connected to WiFi!");
+                info!("Successfully connected to WiFi!");
 
                 // Wait for disconnect event
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
-                debug!("Disconnected from WiFi, will attempt to reconnect...");
+                info!("Disconnected from WiFi, will attempt to reconnect...");
             }
             Err(e) => {
                 error!("Failed to connect: {:?}", e);

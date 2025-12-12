@@ -10,13 +10,16 @@
 // mosquitto_sub -h <IP> -p 1884 -V mqttv5 -i mac-subscriber -t 'measurement/#' -v
 // 5. Install http-serve-folder
 // cargo install http-serve-folder
-// 6. Run the server
+// 6. Generate the firmware.bin file (from any of the other parts, for example)
+// espflash save-image --chip esp32c3 target/riscv32imc-unknown-none-elf/release/no_std-training firmware.bin
+// 7. Copy the firmware.bin into a folder called `ota`
+// 8. Run the server
 // http-serve-folder --ip_address <IP> -p 8080 -l debug ota
-// 7. Run the app
-// BROKER_HOST="<IP>" BROKER_PORT="1884" HOST_IP=<IP> cargo r -r
-// 8. Join the AP network and navigate to http://<MCU_IP>/ the wifi credentials
+// 9. Run the app
+// BROKER_HOST="<IP>" BROKER_PORT="1884" HOST_IP="<IP>" cargo r -r
+// 10. Join the AP network and navigate to http://<MCU_IP>/ the wifi credentials
 // Once the device stops the AP mode and starts the STA mode connected to the wifi, it will start sending sensor data to the MQTT broker and wait for the button press to trigger OTA update.
-// 9. Press the button to trigger OTA update. Ctrl+R to reset the device after the fimrware is downloaded.
+// 11. Press the button to trigger OTA update. Ctrl+R to reset the device after the firmware is downloaded.
 
 #![no_std]
 #![no_main]

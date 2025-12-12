@@ -1,3 +1,4 @@
+use core::fmt::Write;
 use embassy_net::{IpAddress, Ipv4Address, Stack, dns::DnsQueryType, tcp::TcpSocket};
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use log::{debug, error, info};
@@ -136,12 +137,10 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
             // Format sensor values
             let mut temperature_string = heapless::String::<32>::new();
-            core::fmt::Write::write_fmt(&mut temperature_string, format_args!("{:.2}", temp))
-                .expect("write! failed!");
+            write!(temperature_string, "{:.2}", temp).expect("write! failed!");
 
             let mut humidity_string = heapless::String::<32>::new();
-            core::fmt::Write::write_fmt(&mut humidity_string, format_args!("{:.2}", humidity))
-                .expect("write! failed!");
+            write!(humidity_string, "{:.2}", humidity).expect("write! failed!");
 
             // Helper to handle MQTT send errors
             let handle_mqtt_error = |mqtt_error: ReasonCode| match mqtt_error {

@@ -2,7 +2,7 @@
 runner = "espflash flash --monitor --chip esp32c3 --partition-table partitions.csv"
 
 [env]
-ESP_LOG="debug"
+ESP_LOG="info"
 
 [net]
 retry = 3                   # network retries

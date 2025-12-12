@@ -206,7 +206,6 @@ pub async fn http_client_task(
     // Wait for network to be configured (which means WiFi is connected)
     stack.wait_config_up().await;
     debug!("HTTP Client: Network configured, WiFi is connected");
-    debug!("HTTP Client: WiFi connected, network configuration ready");
 
     // Wait for network to be fully ready
     debug!("HTTP Client: Waiting for network to stabilize...");

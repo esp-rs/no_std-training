@@ -5,6 +5,11 @@
     "rust-analyzer.check.allTargets": false,
     "rust-analyzer.showUnlinkedFileNotification": false,
     "rust-analyzer.linkedProjects": [
+        "project/part1/Cargo.toml",
+        "project/part2/Cargo.toml",
+        "project/part3/Cargo.toml",
+        "project/part4/Cargo.toml",
+        "project/part5/Cargo.toml",
         "project/part6/Cargo.toml"
     ]
 }
