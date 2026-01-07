@@ -2,18 +2,22 @@
 runner = "espflash flash --monitor --chip esp32c3 --partition-table partitions.csv"
 
 [env]
-ESP_LOG="info"
+ESP_LOG = "info"
 
 [net]
-retry = 3                   # network retries
-git-fetch-with-cli = true   # use the `git` executable for git operations
-offline = false
+retry              = 3     # network retries
+git-fetch-with-cli = true  # use the `git` executable for git operations
+offline            = false
 
 [build]
 rustflags = [
   # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
   # NOTE: May negatively impact performance of produced code
-  "-C", "force-frame-pointers",
+  "-C",
+  "force-frame-pointers",
+  # Link all sections
+  "-C",
+  "link-arg=-Tlinkall.x",
 ]
 
 target = "riscv32imc-unknown-none-elf"
