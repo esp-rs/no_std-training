@@ -6,24 +6,49 @@ on:
       - "book/"
       - "book/**"
       - "**/README.md"
-      - ".github/workflows/wokwi_projects.yml"
   pull_request:
     paths-ignore:
       - "book/"
       - "book/**"
       - "**/README.md"
-      - ".github/workflows/wokwi_projects.yml"
   schedule:
     - cron: "50 7 * * *"
 
 env:
   CARGO_TERM_COLOR: always
-  SSID: Wokwi-GUEST
+  SSID: ""
   PASSWORD: ""
+  BROKER_HOST: ""
+  BROKER_PORT: ""
+  HOST_IP: ""
 
 jobs:
-  hello-world:
-    name: hello-world
+  projects:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - "project/part1"
+          - "project/part2"
+          - "project/part3"
+          - "project/part4"
+          - "project/part5"
+          - "project/part6"
     steps:
       - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          target: riscv32imc-unknown-none-elf
+          toolchain: nightly
+          components: rust-src, rustfmt, clippy
+
+      - run: cargo fmt --all -- --check
+        working-directory: ${{ matrix.project }}
+
+      - run: cargo build --release
+        working-directory: ${{ matrix.project }}
+
+      - run: cargo clippy -- -D warnings
+        working-directory: ${{ matrix.project }}
