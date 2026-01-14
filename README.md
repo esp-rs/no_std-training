@@ -1,7 +1,7 @@
 # no_std training
 
-[!WARNING]
-This training is currently out of date. We are working on a re-write in the [`feat/overhaul`](https://github.com/esp-rs/no_std-training/tree/feat/overhaul) branch.
+> [!WARNING]
+> This training is currently out of date. We are working on a re-write in the [`feat/overhaul`](https://github.com/esp-rs/no_std-training/tree/feat/overhaul) branch.
 
 [![CI](https://github.com/esp-rs/no_std-training/actions/workflows/ci.yml/badge.svg)](https://github.com/esp-rs/no_std-training/actions/workflows/ci.yml)
 
