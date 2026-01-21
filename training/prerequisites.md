@@ -33,10 +33,10 @@ cargo install espflash --locked
 
 ## Hardware
 
-We will use the [ESP32-C3-DevKit-RUST-1] development kit for this training. While it's possible to use other development kits, this board contains sensors and other devices which will be used by our application, so it is strongly recommended to use this particular kit for the best results.
+We will use the [ESP32-C3-DevKit-RUST-2] development kit for this training. While it's possible to use other development kits, this board contains sensors and other devices which will be used by our application, so it is strongly recommended to use this particular kit for the best results.
 
 The source files for this development kit are available in the [esp-rs/esp-rust-board] repository. This development kit is available on AliExpress and Mouser, see [Where to buy].
 
-[esp32-c3-devkit-rust-1]: https://github.com/esp-rs/esp-rust-board
+[esp32-c3-devkit-rust-2]: https://github.com/esp-rs/esp-rust-board
 [esp-rs/esp-rust-board]: https://github.com/esp-rs/esp-rust-board
 [where to buy]: https://github.com/esp-rs/esp-rust-board#where-to-buy
