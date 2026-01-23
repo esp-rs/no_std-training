@@ -1,26 +1,27 @@
 name: Book CI
+
 on:
   push:
     paths:
-      - "book/"
-      - "book/**"
+      - "training/"
+      - "training/**"
       - ".github/workflows/book.yml"
       - "**book**"
   pull_request:
     paths:
-      - "book/"
-      - "book/**"
+      - "training/"
+      - "training/**"
       - ".github/workflows/book.yml"
       - "**book**"
   workflow_dispatch:
     paths:
-      - "book/"
-      - "book/**"
+      - "training/"
+      - "training/**"
       - ".github/workflows/book.yml"
       - "**book**"
 
 env:
-  MDBOOK_VERSION: "0.4.28"
+  MDBOOK_VERSION: "0.5.1"
 
 jobs:
   build:
@@ -32,23 +33,15 @@ jobs:
       - name: Checkout the repository
         uses: actions/checkout@v5
 
-      - name: Install Python dependencies
-        run: |
-          pip3 install --user python-dateutil linkchecker
-      - name: Put pip binary directory into path
-        run: echo "~/.local/bin" >> $GITHUB_PATH
-
-      - name: Download mdBook ${{ env.MDBOOK_VERSION }}
-        run: |
-          mkdir -p /tmp/mdbook
-          curl -Lo- https://github.com/rust-lang/mdBook/releases/download/v${{ env.MDBOOK_VERSION }}/mdbook-v${{ env.MDBOOK_VERSION }}-x86_64-unknown-linux-gnu.tar.gz | tar -C /tmp/mdbook -xzv
+      - uses: jontze/action-mdbook@v3
+        with:
+          token: ${{secrets.GITHUB_TOKEN}}
+          use-linkcheck: true
+          use-mermaid: true
 
       - name: Build the contents of the book
-        run: "/tmp/mdbook/mdbook build book/ -d ../output/"
+        run: mdbook build -d ../output/
 
-      - name: Check links
-        run: linkchecker book
-      
       - name: Deploy
         if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         uses: appleboy/scp-action@v1.0.0

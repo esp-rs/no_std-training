@@ -1,0 +1,15 @@
+[book]
+title    = "Embedded Rust Training for ESP32"
+authors  = ["Jesse Braham", "Sergio Gasquez"]
+src      = "training"
+language = "en"
+
+[rust]
+edition = "2024"
+
+[output.html]
+additional-js      = ["mermaid-init.js", "mermaid.min.js"]
+git-repository-url = "https://github.com/esp-rs/no_std-training"
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
