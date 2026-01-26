@@ -4,6 +4,9 @@
 
 ## Content of this material
 
+> [!WARNING]
+> This training is currently out of date. We are working on a re-write in the [`feat/overhaul`](https://github.com/esp-rs/no_std-training/tree/feat/overhaul) branch.
+
 The goal of this book is to provide a getting-started guide on using the Rust programming language with Espressif SoCs and modules using `no_std` (bare metal) approach. To better understand this approach, see [Developing on Bare Metal (no_std)] chapter of [The Rust on ESP Book].
 
 The introductory trail will introduce you to the basics of embedded development and how to make the embedded board interact with the outside world by reacting to a button press, and lighting an LED.
