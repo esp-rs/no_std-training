@@ -9,6 +9,11 @@ edge-captive = { version = "0.6.0", default-features = false, features = [
   "io",
 ] }
 edge-dhcp = "0.6.0"
+edge-http = { version = "0.6.1", default-features = false, features = [
+  "edge-nal",
+  "embedded-io-async",
+  "io",
+] }
 edge-nal = "0.5.0"
 edge-nal-embassy = "0.6.0"
 embassy-executor = "0.9.1"
@@ -21,6 +26,7 @@ embassy-net = { version = "0.7.1", features = [
 embassy-sync = "0.7.2"
 embassy-time = "0.5.0"
 embedded-io-async = "0.6.1"
+embedded-storage = "0.3.1"
 esp-alloc = "0.9.0"
 esp-backtrace = { version = "0.18.1", features = [
   "esp32c3",
@@ -32,13 +38,9 @@ esp-hal = { version = "1.0.0", features = ["esp32c3", "unstable"] }
 esp-println = { version = "0.16.1", features = ["esp32c3", "log-04"] }
 esp-radio = { version = "0.17.0", features = ["esp32c3", "unstable", "wifi"] }
 esp-rtos = { version = "0.2.0", features = ["embassy", "esp-radio", "esp32c3"] }
+esp-storage = { version = "0.8.1", features = ["esp32c3"] }
 heapless = { version = "0.8.0", features = ["serde"] }
 log = "0.4.28"
-edge-http = { version = "0.6.1", default-features = false, features = [
-  "edge-nal",
-  "embedded-io-async",
-  "io",
-] }
 rust-mqtt = { version = "0.3.0", default-features = false }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde-json-core = "0.6.0"

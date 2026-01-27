@@ -28,6 +28,7 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
         // Wait for DHCP to assign an IP address
         stack.wait_config_up().await;
+        debug!("MQTT: Network configuration ready");
 
         debug!("MQTT: Waiting to get IP address...");
         loop {
@@ -44,13 +45,17 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             continue;
         }
 
+        debug!("MQTT: Starting MQTT connection loop...");
         Timer::after(EmbassyDuration::from_millis(1_000)).await;
 
         let host = match BROKER_HOST {
-            Some(h) => h,
+            Some(h) => {
+                debug!("MQTT: Using BROKER_HOST: {}", h);
+                h
+            }
             None => {
-                error!(
-                    "No BROKER_HOST set. Provide e.g. BROKER_HOST=10.0.0.10 (or hostname) and optional BROKER_PORT."
+                debug!(
+                    "MQTT: No BROKER_HOST set. Provide e.g. BROKER_HOST=10.0.0.10 (or hostname) and optional BROKER_PORT."
                 );
                 Timer::after(EmbassyDuration::from_secs(5)).await;
                 continue;
@@ -63,17 +68,21 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             .unwrap_or(1884);
 
         // If host is an IPv4 literal, bypass DNS
-        let address = if let Ok(ipv4) = host.parse::<Ipv4Address>() {
-            IpAddress::Ipv4(ipv4)
-        } else {
-            match stack.dns_query(host, DnsQueryType::A).await.map(|a| a[0]) {
-                Ok(address) => address,
+        let address = match host.parse::<Ipv4Address>() {
+            Ok(ipv4) => IpAddress::Ipv4(ipv4),
+            Err(_) => match stack.dns_query(host, DnsQueryType::A).await {
+                Ok(addresses) if !addresses.is_empty() => addresses[0],
+                Ok(_) => {
+                    error!("DNS query returned no addresses for {}", host);
+                    Timer::after(EmbassyDuration::from_secs(5)).await;
+                    continue;
+                }
                 Err(e) => {
                     error!("DNS lookup error: {e:?}");
                     Timer::after(EmbassyDuration::from_secs(5)).await;
                     continue;
                 }
-            }
+            },
         };
 
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);

@@ -39,8 +39,6 @@ pub fn create_network_stacks(
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
     // Init network stack for AP (provisioning)
-    // Increased from 3 to 6 to accommodate: DHCP UDP socket, Captive Portal UDP socket,
-    // HTTP TCP socket, and some buffer for concurrent connections
     static AP_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> =
         static_cell::StaticCell::new();
     let (ap_stack, ap_runner) = embassy_net::new(
@@ -53,14 +51,14 @@ pub fn create_network_stacks(
     );
 
     // Init network stack for STA (client connection)
-    static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
+    static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<6>> =
         static_cell::StaticCell::new();
     let (sta_stack, sta_runner) = embassy_net::new(
         sta_device,
         sta_config,
         STA_STACK_RESOURCES_CELL
             .uninit()
-            .write(StackResources::<3>::new()),
+            .write(StackResources::<6>::new()),
         seed,
     );
 
@@ -100,7 +98,7 @@ pub async fn connection(
     controller
         .set_config(&ap_config)
         .expect("Failed to set WiFi configuration");
-    info!("Starting WiFi in AP mode");
+    debug!("Starting WiFi in AP mode");
     controller
         .start_async()
         .await
