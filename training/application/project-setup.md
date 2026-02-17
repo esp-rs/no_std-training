@@ -2,7 +2,7 @@
 
 ## Generating a Project
 
-We will begin by generating a barebones project as a starting point. We provide a tool, [esp-generate], specifically for such cases. It can be installed by running:
+We will begin by generating a bare-bones project as a starting point. We provide a tool, [esp-generate], specifically for such cases. It can be installed by running:
 
 ```shell
 cargo install --locked esp-generate
@@ -163,7 +163,7 @@ The Application Description is generated via the following macro invocation:
 esp_bootloader_esp_idf::esp_app_desc!();
 ```
 
-No further action is required. See the [ESP-IDF Documentation] for futher details.
+No further action is required. See the [ESP-IDF Documentation] for further details.
 
 [esp-idf documentation]: https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32c3/api-reference/system/app_image_format.html#application-description
 
