@@ -42,21 +42,26 @@ no_std-training/
 
 Let's quickly walk through the purpose of each of these files:
 
-- `.cargo/config.toml` contains configuration for Cargo.
-  - The build target is provided, in this case `riscv32imc-unknown-none-elf`.
+- [`.cargo/config.toml`] contains configuration for Cargo.
+  - The [build target] is provided, in this case `riscv32imc-unknown-none-elf`.
   - Rust compiler flags are provided to force frame pointers. This is required in order for backtraces to work correctly. This is not required if not using the `esp-backtrace` crate.
   - Additionally, we configure [espflash] to be used as the Cargo runner for the project.
-- `.clippy.toml` contains configuration for [Clippy], a linter for Rust code.
-- `build.rs` configures the Rust compiler to include the required linker scripts.
+- [`.clippy.toml`] contains configuration for [Clippy], a linter for Rust code.
+- [`build.rs`] configures the Rust compiler to include the required linker scripts.
   - This could also be configured in `.cargo/config.toml`, but this approach provides better diagnostics in the case of build errors.
 - `Cargo.toml` is the [Cargo manifest], which contains project metadata, dependencies, and more.
-- `rust-toolchain.toml` specifies which Rust toolchain to use, in addition to specifying the required components and the build target.
+- [`rust-toolchain.toml`] specifies which Rust toolchain to use, in addition to specifying the required components and the build target.
 - `src/lib.rs` contains any library code for our application. This is currently empty, but will be populated in later chapters.
 - `src/bin/main.rs` is the entry point of our application. This is where most of our logic will live.
 
+[`.cargo/config.toml`]: https://doc.rust-lang.org/cargo/reference/config.html
+[build target]: https://doc.rust-lang.org/beta/rustc/targets/index.html
 [espflash]: https://github.com/esp-rs/espflash/
+[`.clippy.toml`]: https://doc.rust-lang.org/clippy/configuration.html
 [clippy]: https://doc.rust-lang.org/stable/clippy/index.html
+[`build.rs`]: https://doc.rust-lang.org/cargo/reference/build-scripts.html
 [Cargo manifest]: https://doc.rust-lang.org/cargo/reference/manifest.html
+[`rust-toolchain.toml`]: https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file
 
 ## Dependencies
 
@@ -169,7 +174,7 @@ No further action is required. See the [ESP-IDF Documentation] for further detai
 
 ### `#[esp_rtos::main]` Macro
 
-The `#[esp_rtos::main]` macro is used to define the application's entry point, usually the `main` function:
+The [`#[esp_rtos::main]`][main] macro is used to define the application's entry point, usually the `main` function:
 
 ```rust
 #[esp_rtos::main]
@@ -179,3 +184,5 @@ async fn main(spawner: Spawner) -> ! {
 ```
 
 This macro creates a new instance of an Embassy `Executor` and spawns the `main` function as an asynchronous task.
+
+[main]: https://docs.espressif.com/projects/rust/esp-rtos/0.2.0/esp32c3/esp_rtos/attr.main.html
