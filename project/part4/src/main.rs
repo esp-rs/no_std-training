@@ -1,14 +1,9 @@
 // MQTT Communication (with WiFi provisioning)
-// 1. Install tools
-// cargo install --git https://github.com/bytebeamio/rumqtt rumqttd
-// brew install mosquitto / https://mosquitto.org/download/
+// 1. Start the MQTT server from this repository root:
+// cargo xtask mqtt-server
 // 2. Get your IP
-// ipconfig getifaddr en0 ow ip addr show eth0
-// 3. Run the broker
-// rumqttd
-// 4. Subscribe to the topic
-// mosquitto_sub -h <IP> -p 1884 -V mqttv5 -i mac-subscriber -t 'measurement/#' -v
-// 5. Run the app
+// ipconfig getifaddr en0 or ip addr show eth0
+// 3. Run the app
 // BROKER_HOST="<IP>" BROKER_PORT="1884" cargo r -r
 
 #![no_std]

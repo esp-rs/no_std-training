@@ -1,0 +1,9 @@
+[package]
+edition = "2024"
+name = "xtask"
+publish = false
+version = "0.1.0"
+
+[dependencies]
+clap = { version = "4.5.59", features = ["derive"] }
+rumqttd = { version = "0.20.0", default-features = false }
