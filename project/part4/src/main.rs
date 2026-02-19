@@ -4,7 +4,7 @@
 // 2. Get your IP
 // ipconfig getifaddr en0 or ip addr show eth0
 // 3. Run the app
-// BROKER_HOST="<IP>" BROKER_PORT="1884" cargo r -r
+// HOST_IP="<IP>" cargo r -r
 
 #![no_std]
 #![no_main]

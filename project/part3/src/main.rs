@@ -4,7 +4,7 @@
 // 2. Get your IP
 // ipconfig getifaddr en0
 // 3. Run the app
-// SSID="<SSID>" PASSWORD="<PASSWORD>" BROKER_HOST="<IP>" BROKER_PORT="1884" cargo r -r
+// SSID="<SSID>" PASSWORD="<PASSWORD>" HOST_IP="<IP>" BROKER_PORT="1884" cargo r -r
 
 #![no_std]
 #![no_main]

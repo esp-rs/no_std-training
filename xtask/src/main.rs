@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 
@@ -10,6 +12,7 @@ use rumqttd::{Broker, Config, ConnectionSettings, Notification, RouterConfig, Se
 
 const DEFAULT_PORT: u16 = 1884;
 const DEFAULT_HTTP_PORT: u16 = 8080;
+const DEFAULT_OTA_FIRMWARE_PATH: &str = "firmware.bin";
 
 #[derive(Debug, Parser)]
 #[command(about = "Project automation tasks")]
@@ -30,6 +33,13 @@ enum Command {
         #[arg(long, default_value_t = DEFAULT_HTTP_PORT)]
         port: u16,
     },
+    /// Starts a local OTA HTTP server and serves `GET /firmware.bin`.
+    OtaServer {
+        #[arg(long, default_value_t = DEFAULT_HTTP_PORT)]
+        port: u16,
+        #[arg(long, default_value = DEFAULT_OTA_FIRMWARE_PATH)]
+        firmware: PathBuf,
+    },
 }
 
 fn main() {
@@ -38,6 +48,7 @@ fn main() {
     match cli.command {
         Command::MqttServer { port } => run_mqtt_server(port),
         Command::HttpServer { port } => run_http_server(port),
+        Command::OtaServer { port, firmware } => run_ota_server(port, firmware),
     }
 }
 
@@ -131,6 +142,111 @@ fn run_http_server(port: u16) -> ! {
 }
 
 fn handle_http_connection(stream: &mut TcpStream) {
+    let request = read_http_request(stream);
+
+    let Some((request, headers_end)) = request else {
+        respond(stream, 400, "Bad Request");
+        return;
+    };
+    let headers = &request[..headers_end];
+    let body_start = headers_end + 4;
+    let content_length = parse_content_length(headers);
+    let body_end = content_length
+        .map(|length| body_start + length)
+        .unwrap_or(request.len())
+        .min(request.len());
+    let body = &request[body_start..body_end];
+
+    let mut lines = headers.split(|byte| *byte == b'\n');
+    let request_line = lines.next().unwrap_or(&[]);
+    let request_line = String::from_utf8_lossy(request_line);
+    let request_line = request_line.trim_end_matches('\r');
+
+    match request_line
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["POST", "/sensor", _] => {
+            let payload = String::from_utf8_lossy(body);
+            println!("sensor payload={payload}");
+            respond(stream, 200, "OK");
+        }
+        _ => respond(stream, 404, "Not Found"),
+    }
+}
+
+fn run_ota_server(port: u16, firmware: PathBuf) -> ! {
+    let firmware_bytes = fs::read(&firmware)
+        .unwrap_or_else(|e| panic!("failed to read firmware file `{}`: {e}", firmware.display()));
+
+    let listener = TcpListener::bind(("0.0.0.0", port))
+        .unwrap_or_else(|e| panic!("failed to bind OTA server on port {port}: {e}"));
+    println!("OTA server listening on 0.0.0.0:{port}");
+    println!(
+        "Serving `GET /firmware.bin` from `{}` ({} bytes).",
+        firmware.display(),
+        firmware_bytes.len()
+    );
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => handle_ota_connection(&mut stream, &firmware_bytes),
+            Err(error) => eprintln!("failed to accept connection: {error}"),
+        }
+    }
+
+    unreachable!()
+}
+
+fn handle_ota_connection(stream: &mut TcpStream, firmware_bytes: &[u8]) {
+    let request = read_http_request(stream);
+    let Some((request, headers_end)) = request else {
+        respond(stream, 400, "Bad Request");
+        return;
+    };
+
+    let headers = &request[..headers_end];
+    let mut lines = headers.split(|byte| *byte == b'\n');
+    let request_line = lines.next().unwrap_or(&[]);
+    let request_line = String::from_utf8_lossy(request_line);
+    let request_line = request_line.trim_end_matches('\r');
+
+    match request_line
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["GET", "/firmware.bin", _] => {
+            println!("Serving firmware.bin ({} bytes)", firmware_bytes.len());
+            respond_binary(
+                stream,
+                200,
+                "OK",
+                "application/octet-stream",
+                firmware_bytes,
+            );
+        }
+        _ => respond(stream, 404, "Not Found"),
+    }
+}
+
+fn parse_content_length(headers: &[u8]) -> Option<usize> {
+    let headers = String::from_utf8_lossy(headers);
+    headers.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        if name.trim().eq_ignore_ascii_case("Content-Length") {
+            return value.trim().parse::<usize>().ok();
+        }
+        None
+    })
+}
+
+fn find_header_end(buffer: &[u8]) -> Option<usize> {
+    buffer.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn read_http_request(stream: &mut TcpStream) -> Option<(Vec<u8>, usize)> {
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .expect("failed to set stream timeout");
@@ -163,6 +279,11 @@ fn handle_http_connection(stream: &mut TcpStream) {
                         break;
                     }
                 }
+
+                // Requests without a body (e.g. GET /firmware.bin) are complete at header end.
+                if header_end.is_some() && content_length.is_none() {
+                    break;
+                }
             }
             Err(error) => {
                 eprintln!("failed to read HTTP request: {error}");
@@ -171,56 +292,41 @@ fn handle_http_connection(stream: &mut TcpStream) {
         }
     }
 
-    let Some(headers_end) = header_end else {
-        respond(stream, 400, "Bad Request");
-        return;
-    };
-    let headers = &request[..headers_end];
-    let body_start = headers_end + 4;
-    let body_end = content_length
-        .map(|length| body_start + length)
-        .unwrap_or(request.len())
-        .min(request.len());
-    let body = &request[body_start..body_end];
-
-    let mut lines = headers.split(|byte| *byte == b'\n');
-    let request_line = lines.next().unwrap_or(&[]);
-    let request_line = String::from_utf8_lossy(request_line);
-    let request_line = request_line.trim_end_matches('\r');
-
-    match request_line
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .as_slice()
-    {
-        ["POST", "/sensor", _] => {
-            let payload = String::from_utf8_lossy(body);
-            println!("sensor payload={payload}");
-            respond(stream, 200, "OK");
-        }
-        _ => respond(stream, 404, "Not Found"),
-    }
-}
-
-fn parse_content_length(headers: &[u8]) -> Option<usize> {
-    let headers = String::from_utf8_lossy(headers);
-    headers.lines().find_map(|line| {
-        let (name, value) = line.split_once(':')?;
-        if name.trim().eq_ignore_ascii_case("Content-Length") {
-            return value.trim().parse::<usize>().ok();
-        }
-        None
-    })
-}
-
-fn find_header_end(buffer: &[u8]) -> Option<usize> {
-    buffer.windows(4).position(|window| window == b"\r\n\r\n")
+    let headers_end = header_end?;
+    Some((request, headers_end))
 }
 
 fn respond(stream: &mut TcpStream, status_code: u16, reason: &str) {
     let response = format!("HTTP/1.1 {status_code} {reason}\r\nContent-Length: 0\r\n\r\n");
     if let Err(error) = stream.write_all(response.as_bytes()) {
         eprintln!("failed to write HTTP response: {error}");
+        return;
+    }
+
+    if let Err(error) = stream.flush() {
+        eprintln!("failed to flush HTTP response: {error}");
+    }
+}
+
+fn respond_binary(
+    stream: &mut TcpStream,
+    status_code: u16,
+    reason: &str,
+    content_type: &str,
+    body: &[u8],
+) {
+    let headers = format!(
+        "HTTP/1.1 {status_code} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+
+    if let Err(error) = stream.write_all(headers.as_bytes()) {
+        eprintln!("failed to write HTTP response headers: {error}");
+        return;
+    }
+
+    if let Err(error) = stream.write_all(body) {
+        eprintln!("failed to write HTTP response body: {error}");
         return;
     }
 
