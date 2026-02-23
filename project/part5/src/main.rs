@@ -1,17 +1,17 @@
 // OTA Update
 // 1. Start the MQTT server from this repository root:
 // cargo xtask mqtt-server
-// 2. Get your IP
-// ipconfig getifaddr en0 or ip addr show eth0
-// 3. Generate the firmware.bin file (from any of the other parts, for example)
+// 2. Generate the firmware.bin file (from any of the other parts, for example)
 // espflash save-image --chip esp32c3 target/riscv32imc-unknown-none-elf/release/no_std-training firmware.bin
-// 4. Run the OTA server from this repository root:
+// 3. Run the OTA server from this repository root:
 // cargo xtask ota-server --firmware project/part5/ota/firmware.bin
-// 5. Run the app
+// 4. Run the app
+// Host IP will be printed by xtask command, but if auto-detect fails, you can find it manually by running:
+// ipconfig getifaddr en0 or ip addr show eth0
 // HOST_IP="<IP>" cargo r -r
-// 6. Join the AP network and navigate to http://<MCU_IP>/ the wifi credentials
+// 5. Join the AP network and navigate to http://<MCU_IP>/ the wifi credentials
 // Once the device stops the AP mode and starts the STA mode connected to the wifi, it will start sending sensor data to the MQTT broker and wait for the button press to trigger OTA update.
-// 7. Press the button to trigger OTA update. Ctrl+R to reset the device after the firmware is downloaded.
+// 6. Press the button to trigger OTA update. Ctrl+R to reset the device after the firmware is downloaded.
 
 #![no_std]
 #![no_main]

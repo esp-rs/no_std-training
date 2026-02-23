@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::SocketAddr;
-use std::net::{TcpListener, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -67,6 +66,7 @@ fn run_mqtt_server(port: u16) -> ! {
         .expect("failed to subscribe logger to `measurement/#`");
 
     println!("MQTT server listening on 0.0.0.0:{port}");
+    print_host_ip_hint(port);
     println!("Subscribed to `measurement/#` and printing all incoming MQTT messages.");
 
     loop {
@@ -128,6 +128,7 @@ fn build_mqtt_broker_config(port: u16) -> Config {
 fn run_http_server(port: u16) -> ! {
     let listener = bind_listener("HTTP server", port);
     println!("HTTP server listening on 0.0.0.0:{port}");
+    print_host_ip_hint(port);
     println!("Waiting for POST /sensor requests...");
 
     accept_loop(listener, handle_http_connection)
@@ -166,6 +167,7 @@ fn run_ota_server(port: u16, firmware: PathBuf) -> ! {
 
     let listener = bind_listener("OTA server", port);
     println!("OTA server listening on 0.0.0.0:{port}");
+    print_host_ip_hint(port);
     println!(
         "Serving `GET /firmware.bin` from `{}` ({} bytes).",
         firmware.display(),
@@ -205,6 +207,44 @@ fn handle_ota_connection(stream: &mut TcpStream, firmware_bytes: &[u8]) {
 fn bind_listener(server_name: &str, port: u16) -> TcpListener {
     TcpListener::bind(("0.0.0.0", port))
         .unwrap_or_else(|e| panic!("failed to bind {server_name} on port {port}: {e}"))
+}
+
+fn print_host_ip_hint(port: u16) {
+    match detect_host_ipv4() {
+        Some(ip) => {
+            println!("Host IP (best effort): {ip}");
+            println!("Example: `HOST_IP=\"{ip}\" cargo r -r`");
+            println!("Remote devices should connect to {ip}:{port}");
+        }
+        None => {
+            println!(
+                "Host IP auto-detect failed; find it manually (e.g. `ipconfig getifaddr ...` or `ip addr show ...`)."
+            );
+        }
+    }
+}
+
+fn detect_host_ipv4() -> Option<Ipv4Addr> {
+    // UDP connect selects the outbound interface and lets us inspect the local socket address.
+    for target in ["1.1.1.1:80", "8.8.8.8:80"] {
+        let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)) else {
+            continue;
+        };
+        if socket.connect(target).is_err() {
+            continue;
+        }
+
+        let Ok(local_addr) = socket.local_addr() else {
+            continue;
+        };
+
+        match local_addr.ip() {
+            IpAddr::V4(ip) if !ip.is_loopback() && !ip.is_unspecified() => return Some(ip),
+            _ => continue,
+        }
+    }
+
+    None
 }
 
 fn accept_loop(listener: TcpListener, mut handler: impl FnMut(&mut TcpStream)) -> ! {

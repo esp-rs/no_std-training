@@ -1,9 +1,9 @@
 // MQTT Communication (without WiFi provisioning)
 // 1. Start the MQTT server from this repository root:
 // cargo xtask mqtt-server
-// 2. Get your IP
-// ipconfig getifaddr en0
-// 3. Run the app
+// 2. Run the app
+// Host IP will be printed by xtask command, but if auto-detect fails, you can find it manually by running:
+// ipconfig getifaddr en0 or ip addr show eth0
 // SSID="<SSID>" PASSWORD="<PASSWORD>" HOST_IP="<IP>" cargo r -r
 
 #![no_std]
