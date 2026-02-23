@@ -126,29 +126,22 @@ fn build_mqtt_broker_config(port: u16) -> Config {
 }
 
 fn run_http_server(port: u16) -> ! {
-    let listener = TcpListener::bind(("0.0.0.0", port))
-        .unwrap_or_else(|e| panic!("failed to bind HTTP server on port {port}: {e}"));
+    let listener = bind_listener("HTTP server", port);
     println!("HTTP server listening on 0.0.0.0:{port}");
     println!("Waiting for POST /sensor requests...");
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => handle_http_connection(&mut stream),
-            Err(error) => eprintln!("failed to accept connection: {error}"),
-        }
-    }
-
-    unreachable!()
+    accept_loop(listener, handle_http_connection)
 }
 
 fn handle_http_connection(stream: &mut TcpStream) {
-    let request = read_http_request(stream);
-
-    let Some((request, headers_end)) = request else {
-        respond(stream, 400, "Bad Request");
+    let Some((request, headers_end)) = read_http_request_or_bad_request(stream) else {
         return;
     };
     let headers = &request[..headers_end];
+    let Some((method, path, _version)) = parse_request_line(headers) else {
+        respond(stream, 400, "Bad Request");
+        return;
+    };
     let body_start = headers_end + 4;
     let content_length = parse_content_length(headers);
     let body_end = content_length
@@ -157,17 +150,8 @@ fn handle_http_connection(stream: &mut TcpStream) {
         .min(request.len());
     let body = &request[body_start..body_end];
 
-    let mut lines = headers.split(|byte| *byte == b'\n');
-    let request_line = lines.next().unwrap_or(&[]);
-    let request_line = String::from_utf8_lossy(request_line);
-    let request_line = request_line.trim_end_matches('\r');
-
-    match request_line
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .as_slice()
-    {
-        ["POST", "/sensor", _] => {
+    match (method, path) {
+        ("POST", "/sensor") => {
             let payload = String::from_utf8_lossy(body);
             println!("sensor payload={payload}");
             respond(stream, 200, "OK");
@@ -180,8 +164,7 @@ fn run_ota_server(port: u16, firmware: PathBuf) -> ! {
     let firmware_bytes = fs::read(&firmware)
         .unwrap_or_else(|e| panic!("failed to read firmware file `{}`: {e}", firmware.display()));
 
-    let listener = TcpListener::bind(("0.0.0.0", port))
-        .unwrap_or_else(|e| panic!("failed to bind OTA server on port {port}: {e}"));
+    let listener = bind_listener("OTA server", port);
     println!("OTA server listening on 0.0.0.0:{port}");
     println!(
         "Serving `GET /firmware.bin` from `{}` ({} bytes).",
@@ -189,35 +172,23 @@ fn run_ota_server(port: u16, firmware: PathBuf) -> ! {
         firmware_bytes.len()
     );
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => handle_ota_connection(&mut stream, &firmware_bytes),
-            Err(error) => eprintln!("failed to accept connection: {error}"),
-        }
-    }
-
-    unreachable!()
+    accept_loop(listener, |stream| {
+        handle_ota_connection(stream, &firmware_bytes)
+    })
 }
 
 fn handle_ota_connection(stream: &mut TcpStream, firmware_bytes: &[u8]) {
-    let request = read_http_request(stream);
-    let Some((request, headers_end)) = request else {
+    let Some((request, headers_end)) = read_http_request_or_bad_request(stream) else {
+        return;
+    };
+    let headers = &request[..headers_end];
+    let Some((method, path, _version)) = parse_request_line(headers) else {
         respond(stream, 400, "Bad Request");
         return;
     };
 
-    let headers = &request[..headers_end];
-    let mut lines = headers.split(|byte| *byte == b'\n');
-    let request_line = lines.next().unwrap_or(&[]);
-    let request_line = String::from_utf8_lossy(request_line);
-    let request_line = request_line.trim_end_matches('\r');
-
-    match request_line
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .as_slice()
-    {
-        ["GET", "/firmware.bin", _] => {
+    match (method, path) {
+        ("GET", "/firmware.bin") => {
             println!("Serving firmware.bin ({} bytes)", firmware_bytes.len());
             respond_binary(
                 stream,
@@ -229,6 +200,22 @@ fn handle_ota_connection(stream: &mut TcpStream, firmware_bytes: &[u8]) {
         }
         _ => respond(stream, 404, "Not Found"),
     }
+}
+
+fn bind_listener(server_name: &str, port: u16) -> TcpListener {
+    TcpListener::bind(("0.0.0.0", port))
+        .unwrap_or_else(|e| panic!("failed to bind {server_name} on port {port}: {e}"))
+}
+
+fn accept_loop(listener: TcpListener, mut handler: impl FnMut(&mut TcpStream)) -> ! {
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => handler(&mut stream),
+            Err(error) => eprintln!("failed to accept connection: {error}"),
+        }
+    }
+
+    unreachable!()
 }
 
 fn parse_content_length(headers: &[u8]) -> Option<usize> {
@@ -244,6 +231,18 @@ fn parse_content_length(headers: &[u8]) -> Option<usize> {
 
 fn find_header_end(buffer: &[u8]) -> Option<usize> {
     buffer.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn parse_request_line(headers: &[u8]) -> Option<(&str, &str, &str)> {
+    let line = headers.split(|byte| *byte == b'\n').next()?;
+    let line = line.strip_suffix(b"\r").unwrap_or(line);
+    let line = std::str::from_utf8(line).ok()?;
+
+    let mut parts = line.split_whitespace();
+    let method = parts.next()?;
+    let path = parts.next()?;
+    let version = parts.next()?;
+    Some((method, path, version))
 }
 
 fn read_http_request(stream: &mut TcpStream) -> Option<(Vec<u8>, usize)> {
@@ -294,6 +293,14 @@ fn read_http_request(stream: &mut TcpStream) -> Option<(Vec<u8>, usize)> {
 
     let headers_end = header_end?;
     Some((request, headers_end))
+}
+
+fn read_http_request_or_bad_request(stream: &mut TcpStream) -> Option<(Vec<u8>, usize)> {
+    let request = read_http_request(stream);
+    if request.is_none() {
+        respond(stream, 400, "Bad Request");
+    }
+    request
 }
 
 fn respond(stream: &mut TcpStream, status_code: u16, reason: &str) {

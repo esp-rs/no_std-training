@@ -1,6 +1,6 @@
 // WiFi Connectivity
 // 1. Start local HTTP receiver:
-// cargo xtask http-server --port 8080
+// cargo xtask http-server
 // 2. Run the app:
 // SSID="<SSID>" PASSWORD="<PASSWORD>" HOST_IP="<IP>" cargo r -r
 #![no_std]
