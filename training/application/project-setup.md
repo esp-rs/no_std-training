@@ -65,23 +65,7 @@ Let's quickly walk through the purpose of each of these files:
 
 ## Dependencies
 
-The generated `Cargo.toml` comes pre-populated with a number of dependencies:
-
-```toml
-esp-hal = { version = "~1.0", features = ["esp32c3", "unstable"] }
-
-esp-rtos = { version = "0.2.0", features = ["embassy", "esp32c3"] }
-
-esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32c3"] }
-
-embassy-executor = { version = "0.9.1", features = [] }
-embassy-time     = "0.5.0"
-
-critical-section = "1.2.0"
-static_cell      = "2.1.1"
-```
-
-Their purposes are briefly described below:
+The generated `Cargo.toml` comes pre-populated with a number of dependencies, whose purposes are briefly described below:
 
 - [esp-hal] - The Hardware Abstraction Layer. Provides access to on-chip peripherals using high-level APIs.
 - [esp-rtos] - Provides the runtime necessary to run asynchronous code on top of `esp-hal`.
