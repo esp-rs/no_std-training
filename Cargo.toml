@@ -1,0 +1,10 @@
+[workspace]
+members = ["xtask"]
+exclude = [
+    "project/part1",
+    "project/part2",
+    "project/part3",
+    "project/part4",
+    "project/part5",
+]
+resolver = "2"

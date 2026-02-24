@@ -12,7 +12,7 @@ use crate::sensor::read_sensor;
 use esp_hal::i2c::master::I2c;
 use shtcx::asynchronous::ShtC3;
 
-const BROKER_HOST: Option<&'static str> = option_env!("BROKER_HOST");
+const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
 const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
 
 #[embassy_executor::task]
@@ -46,11 +46,11 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
         Timer::after(EmbassyDuration::from_millis(1_000)).await;
 
-        let host = match BROKER_HOST {
+        let host = match HOST_IP {
             Some(h) => h,
             None => {
                 error!(
-                    "No BROKER_HOST set. Provide e.g. BROKER_HOST=10.0.0.10 (or hostname) and optional BROKER_PORT."
+                    "No HOST_IP set. Provide e.g. HOST_IP=10.0.0.10 (or hostname) and optional BROKER_PORT."
                 );
                 Timer::after(EmbassyDuration::from_secs(5)).await;
                 continue;

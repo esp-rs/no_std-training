@@ -1,7 +1,11 @@
 use alloc::format;
-use embassy_net::{Stack, dns::DnsQueryType, tcp::TcpSocket};
+use embassy_net::{IpAddress, Ipv4Address, Stack, dns::DnsQueryType, tcp::TcpSocket};
 use embedded_io_async::Write;
 use log::{debug, error, info};
+
+const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
+const HTTP_PORT: Option<&'static str> = option_env!("HTTP_PORT");
+const DEFAULT_HTTP_PORT: u16 = 8080;
 
 pub async fn send_sensor_data(
     stack: Stack<'static>,
@@ -19,26 +23,40 @@ pub async fn send_sensor_data(
         temperature_str, humidity_str
     );
 
-    // HTTP target
-    let host = "www.mobile-j.de";
-    let remote_port: u16 = 80;
+    let host = match HOST_IP {
+        Some(value) if !value.is_empty() => value,
+        _ => {
+            error!(
+                "No HOST_IP set. Run with HOST_IP=<your-computer-ip> and optional HTTP_PORT (default: {}).",
+                DEFAULT_HTTP_PORT
+            );
+            return Err(());
+        }
+    };
+    let remote_port = HTTP_PORT
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_HTTP_PORT);
     let path = "/sensor";
 
-    // Resolve hostname using DNS
-    debug!("Resolving {}...", host);
-    let remote_ip = match stack.dns_query(host, DnsQueryType::A).await {
-        Ok(addresses) => {
-            if addresses.is_empty() {
-                error!("DNS query returned no addresses for {}", host);
-                return Err(());
+    let remote_ip = match host.parse::<Ipv4Address>() {
+        Ok(ipv4) => IpAddress::Ipv4(ipv4),
+        Err(_) => {
+            debug!("Resolving {}...", host);
+            match stack.dns_query(host, DnsQueryType::A).await {
+                Ok(addresses) => {
+                    if addresses.is_empty() {
+                        error!("DNS query returned no addresses for {}", host);
+                        return Err(());
+                    }
+                    let address = addresses[0];
+                    debug!("Resolved {} to {}", host, address);
+                    address
+                }
+                Err(e) => {
+                    error!("DNS lookup failed for {}: {:?}", host, e);
+                    return Err(());
+                }
             }
-            let address = addresses[0];
-            debug!("Resolved {} to {}", host, address);
-            address
-        }
-        Err(e) => {
-            error!("DNS lookup failed for {}: {:?}", host, e);
-            return Err(());
         }
     };
 
