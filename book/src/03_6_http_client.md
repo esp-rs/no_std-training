@@ -1,11 +1,7 @@
 # HTTP Client
 Next, we'll write a small client that retrieves data over an HTTP connection to the internet.
 
-For demonstration purposes we implement the http client ourselves. Usually you want to use e.g. [`reqwless`](https://crates.io/crates/reqwless) or [`edge-net`](https://crates.io/crates/edge-net).
-
-For simplicity we use a hardcoded IP address - usually you want to do a DNS lookup instead, which is out of scope of this exercise.
-
-If you try to resolve the hostname yourself, you might notice you get a different IP address. That's because the IP address is from an IP-range assigned to a load-balancer.
+For demonstration purposes we use [`reqwless`](https://crates.io/crates/reqwless) to create the request and parse the response. `embassy-net` provides TCP/IP and DNS.
 
 Before jumping to the exercise, let's explore how Wi-Fi works in `no_std` Rust for Espressif devices.
 
@@ -80,20 +76,15 @@ If the connection succeeds, we proceed with the last part, making the HTTP reque
 
 By default, only unencrypted HTTP is available, which limits our options of hosts to connect to. We're going to use `www.mobile-j.de/`.
 
-To make an HTTP request, we first need to open a socket, and write to it the GET request,
+To make an HTTP request, create an `HttpClient`, issue a `GET` request, send it, and read the response body. The `Host` header is derived from the URL, so we only add `Connection: close`.
 
-✅ Open a socket with the following IPv4 address `142.250.185.115` and port `80`. See `IpAddress::Ipv4` documentation.
-
-✅ `write` the following message to the socket and `flush` it: `b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n"`
-
-✅ Then we wait for the response and read it out.
 ```rust,ignore
-{{#include ../../intro/http-client/examples/http-client.rs:reponse}}
+{{#include ../../intro/http-client/examples/http-client.rs:http_request}}
 ```
 
-✅ Finally, we will close the socket and wait
+✅ Finally, wait a bit before making the next request.
 ```rust,ignore
-{{#include ../../intro/http-client/examples/http-client.rs:socket_close}}
+{{#include ../../intro/http-client/examples/http-client.rs:wait}}
 ```
 
 [timer]: https://docs.rs/esp-hal/0.16.1/esp_hal/systimer/index.html
