@@ -9,9 +9,9 @@
 // Host IP will be printed by xtask command, but if auto-detect fails, you can find it manually by running:
 // ipconfig getifaddr en0 or ip addr show eth0
 // HOST_IP="<IP>" cargo r -r
-// 5. Join the AP network and navigate to http://<MCU_IP>/ the wifi credentials
-// Once the device stops the AP mode and starts the STA mode connected to the wifi, it will start sending sensor data to the MQTT broker and wait for the button press to trigger OTA update.
-// 6. Press the button to trigger OTA update. Ctrl+R to reset the device after the firmware is downloaded.
+// 5. Join the AP network and navigate to http://<MCU_IP>/ to set the wifi credentials.
+// Once the device stops the AP mode and starts the STA mode connected to the wifi, it will start sending sensor data to the MQTT broker and periodically check for OTA updates.
+// 6. Optional: configure the OTA interval with `OTA_CHECK_INTERVAL_SECS=<seconds>` (default: 300).
 
 #![no_std]
 #![no_main]
@@ -22,12 +22,12 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
-mod button;
 mod http;
 mod mqtt;
 mod network;
 mod ota;
 mod sensor;
+mod status_led;
 
 use core::net::Ipv4Addr;
 use core::str::FromStr;
@@ -39,7 +39,6 @@ use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
-    gpio::{Input, InputConfig},
     i2c::master::{Config, I2c},
     interrupt::software::SoftwareInterruptControl,
     ram,
@@ -48,13 +47,13 @@ use esp_hal::{
 use esp_radio::Controller;
 use log::{debug, info};
 
-use crate::button::{BUTTON_PRESSED, button_monitor};
 use crate::http::{run_captive_portal, run_dhcp, run_http_server};
 use crate::mqtt::mqtt_task;
 use crate::network::{
     NetworkStacks, WifiCredentials, connection, create_network_stacks, net_task, sta_net_task,
 };
 use crate::ota::{FLASH_STORAGE, http_client_task};
+use crate::status_led::{LED_STATUS, LedStatus, status_led_task};
 use shtcx::asynchronous::shtc3;
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -91,10 +90,7 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let sht = shtc3(i2c);
 
-    // Set up button on GPIO9 (BOOT button on ESP32-C3)
-    let button_pin = peripherals.GPIO9;
-    let config = InputConfig::default();
-    let button = Input::new(button_pin, config);
+    LED_STATUS.signal(LedStatus::Provisioning);
 
     // Initialize WiFi radio
     static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
@@ -136,9 +132,9 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(run_dhcp(ap_stack, gw_ip_addr)).ok();
     spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
     spawner.spawn(mqtt_task(sta_stack, sht)).ok();
-    spawner.spawn(button_monitor(button, &BUTTON_PRESSED)).ok();
+    spawner.spawn(http_client_task(sta_stack)).ok();
     spawner
-        .spawn(http_client_task(sta_stack, &BUTTON_PRESSED))
+        .spawn(status_led_task(peripherals.RMT, peripherals.GPIO2))
         .ok();
 
     // Wait for AP link to come up

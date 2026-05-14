@@ -7,12 +7,26 @@ use embedded_storage::Storage;
 use esp_storage::FlashStorage;
 use log::{debug, error, info};
 
+use crate::status_led::{LED_STATUS, LedStatus};
+
 const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
+const OTA_CHECK_INTERVAL_SECS: Option<&'static str> = option_env!("OTA_CHECK_INTERVAL_SECS");
 
 pub static FLASH_STORAGE: Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     Option<FlashStorage<'static>>,
 > = Mutex::new(None);
+
+fn ota_check_interval() -> EmbassyDuration {
+    const DEFAULT_SECS: u64 = 300;
+
+    let secs = OTA_CHECK_INTERVAL_SECS
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|secs: &u64| *secs > 0)
+        .unwrap_or(DEFAULT_SECS);
+
+    EmbassyDuration::from_secs(secs)
+}
 
 async fn download_and_flash_firmware(
     stack: Stack<'static>,
@@ -179,7 +193,7 @@ async fn download_and_flash_firmware(
                         }
                     }
 
-                    info!("HTTP Client: OTA update complete! Please reset the device.");
+                    info!("HTTP Client: OTA update complete");
                     return Ok(());
                 }
             }
@@ -192,13 +206,7 @@ async fn download_and_flash_firmware(
 }
 
 #[embassy_executor::task]
-pub async fn http_client_task(
-    stack: Stack<'static>,
-    button_pressed: &'static embassy_sync::signal::Signal<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        (),
-    >,
-) {
+pub async fn http_client_task(stack: Stack<'static>) {
     debug!("HTTP Client: Task started!");
     // Wait for WiFi connection
     debug!("HTTP Client: Waiting for WiFi connection...");
@@ -206,6 +214,7 @@ pub async fn http_client_task(
     // Wait for network to be configured (which means WiFi is connected)
     stack.wait_config_up().await;
     debug!("HTTP Client: Network configured, WiFi is connected");
+    LED_STATUS.signal(LedStatus::Idle);
 
     // Wait for network to be fully ready
     debug!("HTTP Client: Waiting for network to stabilize...");
@@ -215,20 +224,21 @@ pub async fn http_client_task(
         debug!("HTTP Client: Got IP address: {}", config.address);
     }
 
-    debug!("HTTP Client: Ready, waiting for button press...");
+    let ota_interval = ota_check_interval();
+    info!(
+        "HTTP Client: Periodic OTA checks enabled (every {}s)",
+        ota_interval.as_secs()
+    );
 
     loop {
-        // Wait for button press signal
-        debug!("HTTP Client: Waiting for BUTTON_PRESSED signal...");
-        button_pressed.wait().await;
-        debug!("HTTP Client: Button pressed signal received! Starting firmware download...");
+        debug!("HTTP Client: Checking for firmware update...");
 
         // Get host IP from environment variable
         let host_ip_str = match HOST_IP {
             Some(ip) => ip,
             None => {
                 debug!("HTTP Client: HOST_IP not set, skipping OTA update");
-                Timer::after(EmbassyDuration::from_millis(100)).await;
+                Timer::after(ota_interval).await;
                 continue;
             }
         };
@@ -236,20 +246,23 @@ pub async fn http_client_task(
             Ok(ipv4) => IpAddress::Ipv4(ipv4),
             Err(_) => {
                 debug!("HTTP Client: Invalid HOST_IP format: {}", host_ip_str);
-                Timer::after(EmbassyDuration::from_millis(100)).await;
+                Timer::after(ota_interval).await;
                 continue;
             }
         };
 
-        // Attempt firmware download - if successful, break out of loop
+        // Attempt firmware download - reset if successful
+        LED_STATUS.signal(LedStatus::Updating);
+
         if download_and_flash_firmware(stack, host_ip_str, address, &FLASH_STORAGE)
             .await
             .is_ok()
         {
-            break;
+            info!("HTTP Client: Rebooting into updated firmware");
+            esp_hal::system::software_reset();
         }
 
-        // Small delay before waiting for next button press
-        Timer::after(EmbassyDuration::from_millis(100)).await;
+        LED_STATUS.signal(LedStatus::Idle);
+        Timer::after(ota_interval).await;
     }
 }
