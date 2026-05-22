@@ -3,14 +3,18 @@ use embassy_net::{IpAddress, Ipv4Address, Stack, dns::DnsQueryType, tcp::TcpSock
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use log::{debug, error, info};
 use rust_mqtt::{
-    client::{client::MqttClient, client_config::ClientConfig as MqttClientConfig},
-    packet::v5::{publish_packet::QualityOfService, reason_codes::ReasonCode},
-    utils::rng_generator::CountingRng,
+    Bytes,
+    buffer::BumpBuffer,
+    client::{
+        Client,
+        options::{ConnectOptions, PublicationOptions, TopicReference},
+    },
+    types::{MqttString, TopicName},
 };
 
 use crate::sensor::read_sensor;
 use esp_hal::i2c::master::I2c;
-use shtcx::asynchronous::ShtC3;
+use shtcx::asynchronous::AsyncShtC3 as ShtC3;
 
 const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
 const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
@@ -89,32 +93,17 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
         }
         info!("connected!");
 
-        let mut config = MqttClientConfig::new(
-            rust_mqtt::client::client_config::MqttVersion::MQTTv5,
-            CountingRng(20000),
-        );
-        config.add_max_subscribe_qos(QualityOfService::QoS1);
-        config.add_client_id("esp32c3");
-        config.max_packet_size = 1024;
-        let mut recv_buffer = [0; 512];
-        let mut write_buffer = [0; 512];
-        let write_len = write_buffer.len();
-        let recv_len = recv_buffer.len();
+        let mut mqtt_buffer_storage = [0; 1024];
+        let mut mqtt_buffer = BumpBuffer::new(&mut mqtt_buffer_storage);
+        let mut client = Client::<_, _, 1, 1, 1, 1>::new(&mut mqtt_buffer);
+        let connect_options = ConnectOptions::new().clean_start();
+        let client_id = MqttString::from_str("esp32c3").expect("valid MQTT client id");
 
-        let mut client = MqttClient::<_, 5, _>::new(
-            socket,
-            &mut write_buffer,
-            write_len,
-            &mut recv_buffer,
-            recv_len,
-            config,
-        );
-
-        if let Err(mqtt_error) = client.connect_to_broker().await {
-            match mqtt_error {
-                ReasonCode::NetworkError => error!("MQTT Network Error"),
-                _ => error!("Other MQTT Error: {:?}", mqtt_error),
-            }
+        if let Err(e) = client
+            .connect(socket, &connect_options, Some(client_id))
+            .await
+        {
+            error!("MQTT connect error: {:?}", e);
             continue;
         }
 
@@ -142,48 +131,37 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             let mut humidity_string = heapless::String::<32>::new();
             write!(humidity_string, "{:.2}", humidity).expect("write! failed!");
 
-            // Helper to handle MQTT send errors
-            let handle_mqtt_error = |mqtt_error: ReasonCode| match mqtt_error {
-                ReasonCode::NetworkError => {
-                    error!("MQTT Network Error");
-                    true // Signal to break out of inner loop
-                }
-                _ => {
-                    error!("Other MQTT Error: {:?}", mqtt_error);
-                    false // Continue in inner loop
-                }
-            };
+            let temperature_topic = TopicName::new(
+                MqttString::from_str("measurement/temperature").expect("valid MQTT topic string"),
+            )
+            .expect("valid MQTT topic name");
+            let temperature_options =
+                PublicationOptions::new(TopicReference::Name(temperature_topic)).retain();
 
-            // Publish temperature
             if let Err(e) = client
-                .send_message(
-                    "measurement/temperature",
-                    temperature_string.as_bytes(),
-                    QualityOfService::QoS1,
-                    true,
+                .publish(
+                    &temperature_options,
+                    Bytes::from(temperature_string.as_bytes()),
                 )
                 .await
             {
-                if handle_mqtt_error(e) {
-                    break; // Network error, reconnect
-                }
-                continue;
+                error!("MQTT temperature publish error: {:?}", e);
+                break;
             }
 
-            // Publish humidity
+            let humidity_topic = TopicName::new(
+                MqttString::from_str("measurement/humidity").expect("valid MQTT topic string"),
+            )
+            .expect("valid MQTT topic name");
+            let humidity_options =
+                PublicationOptions::new(TopicReference::Name(humidity_topic)).retain();
+
             if let Err(e) = client
-                .send_message(
-                    "measurement/humidity",
-                    humidity_string.as_bytes(),
-                    QualityOfService::QoS1,
-                    true,
-                )
+                .publish(&humidity_options, Bytes::from(humidity_string.as_bytes()))
                 .await
             {
-                if handle_mqtt_error(e) {
-                    break; // Network error, reconnect
-                }
-                continue;
+                error!("MQTT humidity publish error: {:?}", e);
+                break;
             }
 
             // Delay
