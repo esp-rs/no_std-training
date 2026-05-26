@@ -37,7 +37,7 @@ esp-rtos = { version = "0.3.0", features = [
   "log-04",
 ] }
 log = "0.4.29"
-shtcx = { path = "/home/sergio/Documents/Espressif/forks/shtcx-rs", features = ["async"] }
+shtcx = { git = "https://github.com/SergioGasquez/shtcx-rs", branch = "feat/async", features = ["async"] }
 static_cell = "2.1.1"
 
 [profile.dev]
