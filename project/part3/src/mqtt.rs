@@ -111,6 +111,12 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             continue;
         }
 
+        let topic = TopicName::new(
+            MqttString::from_str("measurement/temperature").expect("valid MQTT topic string"),
+        )
+        .expect("valid MQTT topic name");
+        let publish_options = PublicationOptions::new(TopicReference::Name(topic)).retain();
+
         // Main sensor reading and publishing loop
         loop {
             // Check network state before attempting operations
@@ -130,12 +136,6 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
             let mut temperature_string: heapless::String<32> = heapless::String::new();
             write!(temperature_string, "{:.2}", temp).expect("write! failed!");
-
-            let topic = TopicName::new(
-                MqttString::from_str("measurement/temperature").expect("valid MQTT topic string"),
-            )
-            .expect("valid MQTT topic name");
-            let publish_options = PublicationOptions::new(TopicReference::Name(topic)).retain();
 
             if let Err(e) = client
                 .publish(&publish_options, Bytes::from(temperature_string.as_bytes()))

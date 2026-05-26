@@ -116,6 +116,20 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             continue;
         }
 
+        let temperature_topic = TopicName::new(
+            MqttString::from_str("measurement/temperature").expect("valid MQTT topic string"),
+        )
+        .expect("valid MQTT topic name");
+        let temperature_options =
+            PublicationOptions::new(TopicReference::Name(temperature_topic)).retain();
+
+        let humidity_topic = TopicName::new(
+            MqttString::from_str("measurement/humidity").expect("valid MQTT topic string"),
+        )
+        .expect("valid MQTT topic name");
+        let humidity_options =
+            PublicationOptions::new(TopicReference::Name(humidity_topic)).retain();
+
         // Main sensor reading and publishing loop
         loop {
             // Check network state before attempting operations
@@ -140,13 +154,6 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             let mut humidity_string = heapless::String::<32>::new();
             write!(humidity_string, "{:.2}", humidity).expect("write! failed!");
 
-            let temperature_topic = TopicName::new(
-                MqttString::from_str("measurement/temperature").expect("valid MQTT topic string"),
-            )
-            .expect("valid MQTT topic name");
-            let temperature_options =
-                PublicationOptions::new(TopicReference::Name(temperature_topic)).retain();
-
             if let Err(e) = client
                 .publish(
                     &temperature_options,
@@ -157,13 +164,6 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
                 error!("MQTT temperature publish error: {:?}", e);
                 break;
             }
-
-            let humidity_topic = TopicName::new(
-                MqttString::from_str("measurement/humidity").expect("valid MQTT topic string"),
-            )
-            .expect("valid MQTT topic name");
-            let humidity_options =
-                PublicationOptions::new(TopicReference::Name(humidity_topic)).retain();
 
             if let Err(e) = client
                 .publish(&humidity_options, Bytes::from(humidity_string.as_bytes()))
