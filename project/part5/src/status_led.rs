@@ -1,7 +1,7 @@
 use embassy_sync::signal::Signal;
 use esp_hal::{
     gpio::Level,
-    rmt::{Channel, PulseCode, Rmt, Tx, TxChannelConfig, TxChannelCreator},
+    rmt::{Channel, PulseCode, Rmt, Tx, TxChannelConfig},
     time::Rate,
 };
 
@@ -32,9 +32,7 @@ pub async fn status_led_task(
         .with_clk_divider(1)
         .with_idle_output_level(Level::Low)
         .with_idle_output(false);
-    let mut channel = rmt
-        .channel0
-        .configure_tx(&tx_config)
+    let mut channel = esp_hal::rmt::TxChannelCreator::configure_tx(rmt.channel0, &tx_config)
         .expect("Failed to configure RMT TX channel")
         .with_pin(gpio2);
 

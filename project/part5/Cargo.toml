@@ -44,7 +44,7 @@ log = "0.4.29"
 rust-mqtt = { version = "0.5.1", default-features = false, features = ["bump", "v5"] }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde-json-core = "0.6.0"
-shtcx = { git = "https://github.com/SergioGasquez/shtcx-rs", branch = "feat/async", features = ["async"] }
+shtcx = { git = "https://github.com/SergioGasquez/shtcx-rs", rev = "9207153f1042b1e1d8e1bbb6f7bba2281c4a13f4", features = ["async"] }
 static_cell = "2.1.1"
 
 [profile.dev]
