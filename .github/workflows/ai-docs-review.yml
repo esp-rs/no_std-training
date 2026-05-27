@@ -1,0 +1,49 @@
+name: AI Docs Review
+
+on:
+  pull_request:
+    paths:
+      - "training/*.md"
+      - "training/**/*.md"
+      - "book.toml"
+      - ".github/doc-style-guide.md"
+      - ".github/doc-terms.json"
+      - ".github/workflows/ai-docs-review.yml"
+      - "tools/ai-doc-review/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  review:
+    name: Review documentation consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Run documentation review
+        run: node tools/ai-doc-review/review.mjs
+        env:
+          # If this secret is unavailable, the script still runs deterministic
+          # terminology checks and skips the AI pass.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.AI_DOC_REVIEW_MODEL || 'gpt-4.1-mini' }}
+          DOC_REVIEW_FAIL_ON_ERROR: "true"
+
+      - name: Upload documentation review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-review-report
+          path: |
+            doc-review-report.json
+            doc-review-summary.md
+          if-no-files-found: ignore
