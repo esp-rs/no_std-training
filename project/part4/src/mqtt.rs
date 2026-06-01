@@ -14,7 +14,7 @@ use rust_mqtt::{
 
 use crate::sensor::read_sensor;
 use esp_hal::i2c::master::I2c;
-use shtcx::asynchronous::AsyncShtC3 as ShtC3;
+use shtcx2::asynchronous::AsyncShtC3 as ShtC3;
 
 const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
 const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");

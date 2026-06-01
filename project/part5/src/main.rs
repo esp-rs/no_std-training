@@ -53,7 +53,7 @@ use crate::network::{
 };
 use crate::ota::{FLASH_STORAGE, http_client_task};
 use crate::status_led::{LED_STATUS, LedStatus, status_led_task};
-use shtcx::asynchronous::shtc3;
+use shtcx2::asynchronous::shtc3;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 

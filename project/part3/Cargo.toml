@@ -39,7 +39,7 @@ esp-rtos = { version = "0.3.0", features = [
 heapless = "0.9.3"
 log = "0.4.29"
 rust-mqtt = { version = "0.5.1", default-features = false, features = ["bump", "v5"] }
-shtcx = { git = "https://github.com/SergioGasquez/shtcx-rs", rev = "9207153f1042b1e1d8e1bbb6f7bba2281c4a13f4", features = ["async"] }
+shtcx2 = { version = "0.1.0", features = ["async"] }
 static_cell = "2.1.1"
 
 [profile.dev]

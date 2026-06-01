@@ -1350,7 +1350,7 @@ dependencies = [
  "rust-mqtt",
  "serde",
  "serde-json-core",
- "shtcx",
+ "shtcx2",
  "static_cell",
 ]
 
@@ -1718,9 +1718,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
-name = "shtcx"
-version = "1.0.0"
-source = "git+https://github.com/SergioGasquez/shtcx-rs?rev=9207153f1042b1e1d8e1bbb6f7bba2281c4a13f4#9207153f1042b1e1d8e1bbb6f7bba2281c4a13f4"
+name = "shtcx2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af1cc62a2a8dda0df2f561c8ef171c54b940b5daa998027e7d7915f470440a3d"
 dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",

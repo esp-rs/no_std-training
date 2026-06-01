@@ -36,7 +36,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use log::{debug, info};
-use shtcx::asynchronous::shtc3;
+use shtcx2::asynchronous::shtc3;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
