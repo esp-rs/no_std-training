@@ -6,6 +6,7 @@ const repoRoot = process.cwd();
 const reportPath = process.env.DOC_REVIEW_REPORT_PATH || "doc-review-report.json";
 const summaryPath = process.env.DOC_REVIEW_SUMMARY_PATH || "doc-review-summary.md";
 const failOnError = (process.env.DOC_REVIEW_FAIL_ON_ERROR || "true").toLowerCase() === "true";
+const failOnAiError = (process.env.DOC_REVIEW_FAIL_ON_AI_ERROR || "false").toLowerCase() === "true";
 const failConfidence = Number(process.env.DOC_REVIEW_FAIL_CONFIDENCE || "0.85");
 const maxBookChars = Number(process.env.DOC_REVIEW_MAX_BOOK_CHARS || "120000");
 
@@ -160,7 +161,15 @@ function buildBookPayload(files) {
 }
 
 function normalizeAiFinding(finding) {
-  const severity = ["suggestion", "warning", "error"].includes(finding.severity) ? finding.severity : "warning";
+  const message = String(finding.message || "");
+  const suggestion = String(finding.suggestion || "");
+  if (/\b(no change needed|no further action|correct use|correctly done|correct phrasing|correct here|this is correct)\b/i.test(`${message} ${suggestion}`)) {
+    return undefined;
+  }
+
+  let severity = ["suggestion", "warning", "error"].includes(finding.severity) ? finding.severity : "warning";
+  if (severity === "error" && !failOnAiError) severity = "warning";
+
   const confidence = typeof finding.confidence === "number" ? Math.max(0, Math.min(1, finding.confidence)) : 0.75;
   return {
     source: "ai",
@@ -213,9 +222,11 @@ async function runAiReview(files, terms) {
 
   const systemPrompt = `You are a meticulous technical editor for an mdBook about Embedded Rust on Espressif hardware.
 Review the whole book as one coherent document. Check spelling, grammar, terminology consistency, formatting consistency, voice/tone consistency, and cross-chapter continuity.
-Return only actionable findings. Do not rewrite whole sections. Do not flag code examples, URLs, commands, or exact package/repository names unless the surrounding prose is wrong.
+Return only actionable findings where the quoted text should be changed. Do not report correct usage, and never use suggestions like "No change needed".
+Do not rewrite whole sections. Do not flag code examples, URLs, commands, or exact package/repository names unless the surrounding prose is wrong.
+Do not invent terminology rules that are not present in the style guide or canonical terms.
 Return strict JSON with this shape: {"findings":[{"category":"spelling|grammar|terminology|formatting|consistency|voice|continuity","severity":"suggestion|warning|error","confidence":0.0,"file":"path","line":1,"quote":"exact text","message":"why this matters","suggestion":"specific replacement or action"}]}.
-Use severity "error" only for high-confidence factual style violations or spelling errors. Limit output to the 50 most useful findings.`;
+Use severity "error" only for high-confidence factual style violations explicitly covered by the style guide, or clear spelling errors. Limit output to the 50 most useful findings.`;
 
   const userPrompt = `Style guide:\n${styleGuide}\n\nCanonical terms and deterministic rules:\n${JSON.stringify(terms, null, 2)}\n\nBook files in reading order:\n${bookPayload}`;
 
@@ -247,7 +258,7 @@ Use severity "error" only for high-confidence factual style violations or spelli
   if (!content) throw new Error(`${provider} API response did not contain message content.`);
 
   const parsed = extractJson(content);
-  const findings = Array.isArray(parsed.findings) ? parsed.findings.map(normalizeAiFinding) : [];
+  const findings = Array.isArray(parsed.findings) ? parsed.findings.map(normalizeAiFinding).filter(Boolean) : [];
   return { skipped: false, provider, model, findings };
 }
 
@@ -264,7 +275,7 @@ function annotate(findings) {
     const properties = [];
     if (finding.file) properties.push(`file=${commandEscape(finding.file)}`);
     if (finding.line) properties.push(`line=${commandEscape(finding.line)}`);
-    if (finding.category) properties.push(`title=${commandEscape(`docs:${finding.category}`)}`);
+    if (finding.category) properties.push(`title=${commandEscape(`docs:${finding.source || "review"}:${finding.category}`)}`);
     const propertyText = properties.length > 0 ? ` ${properties.join(",")}` : "";
     const message = `${finding.message || "Documentation review finding"}${finding.suggestion ? ` Suggestion: ${finding.suggestion}` : ""}`;
     console.log(`::${level}${propertyText}::${commandEscape(message)}`);
@@ -338,7 +349,7 @@ async function main() {
 
   annotate(findings);
 
-  const blockingFindings = findings.filter((finding) => finding.severity === "error" && finding.confidence >= failConfidence);
+  const blockingFindings = findings.filter((finding) => finding.severity === "error" && finding.confidence >= failConfidence && (finding.source !== "ai" || failOnAiError));
   if (failOnError && blockingFindings.length > 0) {
     console.error(`Documentation review failed with ${blockingFindings.length} high-confidence error(s).`);
     process.exit(1);
