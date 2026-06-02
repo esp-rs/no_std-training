@@ -160,10 +160,28 @@ function buildBookPayload(files) {
   return chunks.join("\n\n");
 }
 
+function normalizeFindingText(value) {
+  return String(value || "")
+    .replace(/^Suggestion:\s*/i, "")
+    .replace(/^Change to:\s*/i, "")
+    .replace(/^[-*]\s+/, "")
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeAiFinding(finding) {
   const message = String(finding.message || "");
   const suggestion = String(finding.suggestion || "");
-  if (/\b(no change needed|no further action|correct use|correctly done|correct phrasing|correct here|this is correct)\b/i.test(`${message} ${suggestion}`)) {
+  const quote = String(finding.quote || "");
+  const reviewText = `${message} ${suggestion}`;
+
+  if (/\b(no change needed|no further action|correct use|correctly done|correct phrasing|correct here|this is correct|correct as is)\b/i.test(reviewText)) {
+    return undefined;
+  }
+
+  // If the replacement is identical to the quoted text, the finding is not actionable.
+  if (suggestion && normalizeFindingText(suggestion) === normalizeFindingText(quote)) {
     return undefined;
   }
 
@@ -223,7 +241,8 @@ async function runAiReview(files, terms) {
   const systemPrompt = `You are a meticulous technical editor for an mdBook about Embedded Rust on Espressif hardware.
 Review the whole book as one coherent document. Check spelling, grammar, terminology consistency, formatting consistency, voice/tone consistency, and cross-chapter continuity.
 Return only actionable findings where the quoted text should be changed. Do not report correct usage, and never use suggestions like "No change needed".
-Do not rewrite whole sections. Do not flag code examples, URLs, commands, or exact package/repository names unless the surrounding prose is wrong.
+Omit findings when the suggested replacement is identical to the quoted text.
+Do not rewrite whole sections. Do not flag code examples, URLs, commands, fenced code blocks, inline code, Markdown link destinations, or exact package/repository names unless the surrounding prose is wrong.
 Do not invent terminology rules that are not present in the style guide or canonical terms.
 Return strict JSON with this shape: {"findings":[{"category":"spelling|grammar|terminology|formatting|consistency|voice|continuity","severity":"suggestion|warning|error","confidence":0.0,"file":"path","line":1,"quote":"exact text","message":"why this matters","suggestion":"specific replacement or action"}]}.
 Use severity "error" only for high-confidence factual style violations explicitly covered by the style guide, or clear spelling errors. Limit output to the 50 most useful findings.`;
