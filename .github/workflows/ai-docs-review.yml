@@ -15,7 +15,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  models: read
 
 jobs:
   review:
@@ -33,8 +32,10 @@ jobs:
       - name: Run documentation review
         run: node tools/ai-doc-review/review.mjs
         env:
-          # Use GitHub Models with the workflow token, so no OpenAI secret is required.
-          GITHUB_TOKEN: ${{ github.token }}
+          # GitHub Models currently returns 403 with the built-in workflow token
+          # in this repository. Configure AI_DOC_REVIEW_API_KEY with a token that
+          # can access GitHub Models to enable the AI pass in CI.
+          AI_DOC_REVIEW_API_KEY: ${{ secrets.AI_DOC_REVIEW_API_KEY }}
           AI_DOC_REVIEW_BASE_URL: https://models.github.ai/inference
           AI_DOC_REVIEW_MODEL: ${{ vars.AI_DOC_REVIEW_MODEL || 'openai/gpt-4.1-mini' }}
           DOC_REVIEW_FAIL_ON_ERROR: "true"
