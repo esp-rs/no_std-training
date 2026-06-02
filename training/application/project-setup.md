@@ -2,7 +2,7 @@
 
 ## Generating a Project
 
-We will begin by generating a bare-bones project as a starting point. We provide a tool, [esp-generate], specifically for such cases. It can be installed by running:
+We will begin by generating a bare-bones project as a starting point. We provide a tool, [`esp-generate`][esp-generate], specifically for such cases. It can be installed by running:
 
 ```shell
 cargo install --locked esp-generate
@@ -14,7 +14,7 @@ With `esp-generate` installed, we can now generate an empty project:
 esp-generate --headless --chip=esp32c3 -o unstable-hal -o embassy no_std-training
 ```
 
-Since we are targeting the [ESP32-C3-DevKit-RUST-2] development kit, we select the ESP32-C3 for our chip. We will take advantage of async support via [Embassy], so both the `embassy` and `unstable` options are required.
+Since we are targeting the [ESP32-C3-DevKit-RUST-2] development kit, we select the ESP32-C3 for our chip. We will take advantage of asynchronous support via [Embassy], so both the `embassy` and `unstable` options are required.
 
 You should now see `no_std-training/` in the executing directory.
 
@@ -67,13 +67,13 @@ Let's quickly walk through the purpose of each of these files:
 
 The generated `Cargo.toml` comes pre-populated with a number of dependencies, whose purposes are briefly described below:
 
-- [esp-hal] - The Hardware Abstraction Layer. Provides access to on-chip peripherals using high-level APIs.
-- [esp-rtos] - Provides the runtime necessary to run asynchronous code on top of `esp-hal`.
-- [esp-bootloader-esp-idf] - Support package for using the ESP-IDF bootloader.
-- [embassy-executor] - Asynchronous executor for embedded devices. Allows us to run one or more asynchronous tasks.
-- [embassy-time] - Asynchronous timekeeping, delays, and timeouts.
-- [critical-section] - Critical sections for embedded devices.
-- [static_cell] - Statically allocated, initialized at runtime cell.
+- [`esp-hal`][esp-hal] - The Hardware Abstraction Layer. Provides access to on-chip peripherals using high-level APIs.
+- [`esp-rtos`][esp-rtos] - Provides the runtime necessary to run asynchronous code on top of `esp-hal`.
+- [`esp-bootloader-esp-idf`][esp-bootloader-esp-idf] - Support package for using the ESP-IDF bootloader.
+- [`embassy-executor`][embassy-executor] - Asynchronous executor for embedded devices. Allows us to run one or more asynchronous tasks.
+- [`embassy-time`][embassy-time] - Asynchronous timekeeping, delays, and timeouts.
+- [`critical-section`][critical-section] - Critical sections for embedded devices.
+- [`static_cell`][static_cell] - Statically allocated, initialized at runtime cell.
 
 Additional dependencies will be included in later chapters as well.
 
@@ -109,7 +109,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// This creates a default app-descriptor required by the esp-idf bootloader.
+// This creates a default app-descriptor required by the ESP-IDF bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -154,7 +154,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 No further action is required. See the [ESP-IDF Documentation] for further details.
 
-[esp-idf documentation]: https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32c3/api-reference/system/app_image_format.html#application-description
+[ESP-IDF Documentation]: https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32c3/api-reference/system/app_image_format.html#application-description
 
 ### `#[esp_rtos::main]` Macro
 

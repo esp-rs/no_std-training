@@ -4,7 +4,7 @@
 
 # Introduction
 
-The goal of this book is to provide a detailed getting-started guide for using the Rust programming language with the ESP32 series of devices from Espressif.
+The goal of this book is to provide a detailed getting-started guide for using the Rust programming language with ESP32-C3 devices from Espressif.
 
 This book will guide users through the process of creating a `no_std` Rust application using [esp-hal], demonstrating the use of various hardware peripherals as we progress. More information regarding the application we will be building can be found in the [Project Overview] chapter.
 
@@ -22,9 +22,9 @@ You can join the [esp-rs community] on Matrix for any technical questions or iss
 
 This book assumes that you're reading it front-to-back. Later chapters build on concepts introduced in earlier chapters, and earlier chapters may omit details which are covered in more depth later on in the book.
 
-Source code for the application we will be building can be found in the [esp-rs/no-std_training] repository.
+Source code for the application we will be building can be found in the [`esp-rs/no_std-training`] repository.
 
-[esp-rs/no-std_training]: https://github.com/esp-rs/no_std-training/tree/main
+[`esp-rs/no_std-training`]: https://github.com/esp-rs/no_std-training/tree/main
 
 ## Conventions Used in This Book
 
