@@ -38,6 +38,7 @@ jobs:
           AI_DOC_REVIEW_API_KEY: ${{ secrets.AI_DOC_REVIEW_API_KEY }}
           AI_DOC_REVIEW_BASE_URL: https://models.github.ai/inference
           AI_DOC_REVIEW_MODEL: ${{ vars.AI_DOC_REVIEW_MODEL || 'openai/gpt-4.1-mini' }}
+          DOC_REVIEW_GITHUB_TOKEN: ${{ github.token }}
           DOC_REVIEW_FAIL_ON_ERROR: "true"
 
       - name: Upload documentation review report

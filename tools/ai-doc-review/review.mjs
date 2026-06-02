@@ -51,7 +51,7 @@ function discoverMarkdownFiles(bookSrc) {
   const seen = new Set();
 
   function add(file) {
-    const normalized = file.replaceAll(path.sep, "/");
+    const normalized = normalizeRepoPath(file);
     if (!seen.has(normalized) && fileExists(normalized)) {
       seen.add(normalized);
       ordered.push(normalized);
@@ -64,13 +64,160 @@ function discoverMarkdownFiles(bookSrc) {
     const summaryText = readText(summary);
     const linkPattern = /\]\(([^)]+\.md)(?:#[^)]+)?\)/g;
     for (const match of summaryText.matchAll(linkPattern)) {
-      const linked = path.normalize(path.join(bookSrc, match[1])).replaceAll(path.sep, "/");
+      const linked = path.normalize(path.join(bookSrc, match[1]));
       add(linked);
     }
   }
 
   for (const file of walkMarkdown(bookSrc)) add(file);
   return ordered;
+}
+
+function normalizeRepoPath(filePath) {
+  return String(filePath || "").replaceAll("\\", "/").replace(/^\.\//, "");
+}
+
+function parseChangedLinesFromPatch(patch) {
+  const changedLines = new Set();
+  let newLine = 0;
+
+  for (const line of String(patch || "").split("\n")) {
+    const hunk = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      newLine = Number(hunk[1]);
+      continue;
+    }
+
+    if (line.startsWith("+++")) continue;
+    if (line.startsWith("+")) {
+      changedLines.add(newLine);
+      newLine += 1;
+    } else if (line.startsWith("-")) {
+      continue;
+    } else if (line.startsWith(" ")) {
+      newLine += 1;
+    }
+  }
+
+  return changedLines;
+}
+
+async function fetchPullRequestFiles(owner, repo, pullNumber) {
+  const token = process.env.DOC_REVIEW_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+  const apiBaseUrl = (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/$/, "");
+  const headers = {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28"
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const files = [];
+  for (let page = 1; ; page += 1) {
+    const url = `${apiBaseUrl}/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100&page=${page}`;
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`GitHub API request failed (${response.status}): ${body}`);
+    }
+
+    const pageFiles = await response.json();
+    if (!Array.isArray(pageFiles)) throw new Error("GitHub API response did not contain pull request files.");
+    files.push(...pageFiles);
+    if (pageFiles.length < 100) break;
+  }
+  return files;
+}
+
+async function resolveReviewScope(files) {
+  const eventName = process.env.GITHUB_EVENT_NAME;
+  if (eventName !== "pull_request" && eventName !== "pull_request_target") {
+    return { enabled: false, reason: "No pull request event detected." };
+  }
+
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath || !fs.existsSync(eventPath)) {
+    throw new Error("Cannot determine PR diff: GITHUB_EVENT_PATH is not set or does not exist.");
+  }
+
+  const event = JSON.parse(fs.readFileSync(eventPath, "utf8"));
+  const pullNumber = event.pull_request?.number || event.number;
+  const repository = event.repository?.full_name || process.env.GITHUB_REPOSITORY;
+  if (!pullNumber || !repository) throw new Error("Cannot determine PR diff: pull request number or repository is missing.");
+
+  const [owner, repo] = repository.split("/");
+  const reviewedFiles = new Set(files.map(normalizeRepoPath));
+  const changedLinesByFile = new Map();
+  const prFiles = await fetchPullRequestFiles(owner, repo, pullNumber);
+
+  for (const prFile of prFiles) {
+    const file = normalizeRepoPath(prFile.filename);
+    if (!reviewedFiles.has(file) || !prFile.patch) continue;
+
+    const changedLines = parseChangedLinesFromPatch(prFile.patch);
+    if (changedLines.size > 0) changedLinesByFile.set(file, changedLines);
+  }
+
+  return {
+    enabled: true,
+    reason: `Pull request #${pullNumber}`,
+    pullNumber,
+    changedLinesByFile
+  };
+}
+
+function compactLineNumbers(lines) {
+  const sorted = [...lines].sort((a, b) => a - b);
+  const ranges = [];
+  for (let index = 0; index < sorted.length; index += 1) {
+    const start = sorted[index];
+    let end = start;
+    while (index + 1 < sorted.length && sorted[index + 1] === end + 1) {
+      index += 1;
+      end = sorted[index];
+    }
+    ranges.push(start === end ? String(start) : `${start}-${end}`);
+  }
+  return ranges.join(", ");
+}
+
+function countReviewScopeLines(reviewScope) {
+  if (!reviewScope.enabled) return 0;
+  return [...reviewScope.changedLinesByFile.values()].reduce((total, lines) => total + lines.size, 0);
+}
+
+function formatReviewScope(reviewScope) {
+  if (!reviewScope.enabled) return `No PR diff scope detected (${reviewScope.reason}); findings may cover any reviewed file.`;
+  if (reviewScope.changedLinesByFile.size === 0) return "The PR does not add or modify any lines in the reviewed Markdown files. Return {\"findings\":[]}.";
+
+  const entries = [...reviewScope.changedLinesByFile.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([file, lines]) => `- ${file}: ${compactLineNumbers(lines)}`);
+  return `Only return findings whose file and line are in these PR changed lines:\n${entries.join("\n")}`;
+}
+
+function findingMatchesReviewScope(finding, reviewScope) {
+  if (!reviewScope.enabled) return true;
+  const file = normalizeRepoPath(finding.file);
+  const line = Number(finding.line);
+  return Boolean(file && Number.isInteger(line) && reviewScope.changedLinesByFile.get(file)?.has(line));
+}
+
+function filterFindingsToReviewScope(findings, reviewScope) {
+  return findings.filter((finding) => findingMatchesReviewScope(finding, reviewScope));
+}
+
+function serializeReviewScope(reviewScope) {
+  if (!reviewScope.enabled) return { enabled: false, reason: reviewScope.reason };
+  return {
+    enabled: true,
+    reason: reviewScope.reason,
+    pullNumber: reviewScope.pullNumber,
+    changedLines: Object.fromEntries(
+      [...reviewScope.changedLinesByFile.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([file, lines]) => [file, [...lines].sort((a, b) => a - b)])
+    )
+  };
 }
 
 function spaces(length) {
@@ -189,14 +336,15 @@ function normalizeAiFinding(finding) {
   if (severity === "error" && !failOnAiError) severity = "warning";
 
   const confidence = typeof finding.confidence === "number" ? Math.max(0, Math.min(1, finding.confidence)) : 0.75;
+  const line = Number(finding.line);
   return {
     source: "ai",
     category: finding.category || "consistency",
     ruleId: finding.ruleId || undefined,
     severity,
     confidence,
-    file: finding.file,
-    line: Number.isInteger(finding.line) ? finding.line : undefined,
+    file: finding.file ? normalizeRepoPath(finding.file) : undefined,
+    line: Number.isInteger(line) && line > 0 ? line : undefined,
     quote: finding.quote,
     message: finding.message,
     suggestion: finding.suggestion
@@ -228,7 +376,7 @@ function resolveAiConfig() {
   };
 }
 
-async function runAiReview(files, terms) {
+async function runAiReview(files, terms, reviewScope) {
   const aiConfig = resolveAiConfig();
   if (!aiConfig) {
     return { skipped: true, reason: "AI_DOC_REVIEW_API_KEY, GITHUB_TOKEN, or OPENAI_API_KEY is not set.", findings: [] };
@@ -236,10 +384,12 @@ async function runAiReview(files, terms) {
 
   const styleGuide = fileExists(".github/doc-style-guide.md") ? readText(".github/doc-style-guide.md") : "";
   const bookPayload = buildBookPayload(files);
+  const reviewScopeText = formatReviewScope(reviewScope);
   const { apiKey, model, baseUrl, provider } = aiConfig;
 
   const systemPrompt = `You are a meticulous technical editor for an mdBook about Embedded Rust on Espressif hardware.
 Review the whole book as one coherent document. Check spelling, grammar, terminology consistency, formatting consistency, voice/tone consistency, and cross-chapter continuity.
+When a PR diff scope is provided, only report actionable findings on PR changed lines. You may use the unchanged surrounding content for context, but do not report findings outside that scope.
 Return only actionable findings where the quoted text should be changed. Do not report correct usage, and never use suggestions like "No change needed".
 Omit findings when the suggested replacement is identical to the quoted text.
 Do not rewrite whole sections. Do not flag code examples, URLs, commands, fenced code blocks, inline code, Markdown link destinations, or exact package/repository names unless the surrounding prose is wrong.
@@ -247,7 +397,7 @@ Do not invent terminology rules that are not present in the style guide or canon
 Return strict JSON with this shape: {"findings":[{"category":"spelling|grammar|terminology|formatting|consistency|voice|continuity","severity":"suggestion|warning|error","confidence":0.0,"file":"path","line":1,"quote":"exact text","message":"why this matters","suggestion":"specific replacement or action"}]}.
 Use severity "error" only for high-confidence factual style violations explicitly covered by the style guide, or clear spelling errors. Limit output to the 50 most useful findings.`;
 
-  const userPrompt = `Style guide:\n${styleGuide}\n\nCanonical terms and deterministic rules:\n${JSON.stringify(terms, null, 2)}\n\nBook files in reading order:\n${bookPayload}`;
+  const userPrompt = `Style guide:\n${styleGuide}\n\nCanonical terms and deterministic rules:\n${JSON.stringify(terms, null, 2)}\n\nPR diff scope:\n${reviewScopeText}\n\nBook files in reading order:\n${bookPayload}`;
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -301,7 +451,7 @@ function annotate(findings) {
   }
 }
 
-function summarize(findings, aiResult, files) {
+function summarize(findings, aiResult, files, reviewScope, excludedFindingCount) {
   const counts = findings.reduce((acc, finding) => {
     acc[finding.severity] = (acc[finding.severity] || 0) + 1;
     return acc;
@@ -311,6 +461,12 @@ function summarize(findings, aiResult, files) {
   lines.push("# Documentation review");
   lines.push("");
   lines.push(`Reviewed ${files.length} Markdown files.`);
+  if (reviewScope.enabled) {
+    lines.push(`Actionable scope: ${countReviewScopeLines(reviewScope)} changed line(s) in ${reviewScope.changedLinesByFile.size} Markdown file(s) from ${reviewScope.reason}.`);
+  }
+  if (excludedFindingCount > 0) {
+    lines.push(`Ignored ${excludedFindingCount} finding(s) outside the PR diff.`);
+  }
   lines.push(`Findings: ${findings.length} (${counts.error || 0} errors, ${counts.warning || 0} warnings, ${counts.suggestion || 0} suggestions).`);
   if (aiResult.skipped) {
     lines.push(`AI review skipped: ${aiResult.reason}`);
@@ -339,27 +495,32 @@ async function main() {
   const bookSrc = process.env.DOC_REVIEW_BOOK_SRC || discoverBookSrc();
   const files = discoverMarkdownFiles(bookSrc);
   const terms = readJson(".github/doc-terms.json");
+  const reviewScope = await resolveReviewScope(files);
 
   const deterministicFindings = runDeterministicChecks(files, terms);
   let aiResult;
   try {
-    aiResult = await runAiReview(files, terms);
+    aiResult = await runAiReview(files, terms, reviewScope);
   } catch (error) {
     aiResult = { skipped: true, reason: error.message, findings: [] };
     console.log(`::warning title=${commandEscape("docs:ai-review")}::${commandEscape(`AI review failed: ${error.message}`)}`);
   }
 
-  const findings = [...deterministicFindings, ...aiResult.findings];
+  const allFindings = [...deterministicFindings, ...aiResult.findings];
+  const findings = filterFindingsToReviewScope(allFindings, reviewScope);
+  const excludedFindingCount = allFindings.length - findings.length;
   const report = {
     generatedAt: new Date().toISOString(),
     bookSrc,
     files,
+    reviewScope: serializeReviewScope(reviewScope),
     ai: aiResult.skipped ? { skipped: true, reason: aiResult.reason } : { skipped: false, provider: aiResult.provider, model: aiResult.model },
+    excludedFindingCount,
     findings
   };
 
   fs.writeFileSync(path.join(repoRoot, reportPath), JSON.stringify(report, null, 2) + "\n");
-  const summary = summarize(findings, aiResult, files);
+  const summary = summarize(findings, aiResult, files, reviewScope, excludedFindingCount);
   fs.writeFileSync(path.join(repoRoot, summaryPath), summary);
 
   if (process.env.GITHUB_STEP_SUMMARY) {
