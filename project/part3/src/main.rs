@@ -30,8 +30,7 @@ use esp_hal::{
     rng::Rng,
     timer::timg::TimerGroup,
 };
-use esp_radio::Controller;
-use shtcx::asynchronous::shtc3;
+use shtcx2::asynchronous::shtc3;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -63,17 +62,10 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let sht = shtc3(i2c);
 
-    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
-        static_cell::StaticCell::new();
-    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL
-        .uninit()
-        .write(esp_radio::init().expect("Failed to initialize radio controller"));
+    let (controller, interfaces) = esp_radio::wifi::new(peripherals.WIFI, Default::default())
+        .expect("Failed to create WiFi controller");
 
-    let (controller, interfaces) =
-        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default())
-            .expect("Failed to create WiFi controller");
-
-    let wifi_interface = interfaces.sta;
+    let wifi_interface = interfaces.station;
 
     let config = embassy_net::Config::dhcpv4(Default::default());
 
@@ -91,9 +83,9 @@ async fn main(spawner: Spawner) -> ! {
             .write(StackResources::<3>::new()),
         seed,
     );
-    spawner.spawn(connection(controller)).ok();
-    spawner.spawn(net_task(runner)).ok();
-    spawner.spawn(mqtt_task(stack, sht)).ok();
+    spawner.spawn(connection(controller).expect("failed to spawn connection task"));
+    spawner.spawn(net_task(runner).expect("failed to spawn network task"));
+    spawner.spawn(mqtt_task(stack, sht).expect("failed to spawn MQTT task"));
 
     // Keep main task alive
     loop {

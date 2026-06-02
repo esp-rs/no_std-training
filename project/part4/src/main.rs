@@ -35,9 +35,8 @@ use esp_hal::{
     ram,
     timer::timg::TimerGroup,
 };
-use esp_radio::Controller;
 use log::{debug, info};
-use shtcx::asynchronous::shtc3;
+use shtcx2::asynchronous::shtc3;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -71,20 +70,13 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let sht = shtc3(i2c);
 
-    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
-        static_cell::StaticCell::new();
-    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL
-        .uninit()
-        .write(esp_radio::init().expect("Failed to initialize radio controller"));
-
-    let (controller, interfaces) =
-        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default())
-            .expect("Failed to create WiFi controller");
+    let (controller, interfaces) = esp_radio::wifi::new(peripherals.WIFI, Default::default())
+        .expect("Failed to create WiFi controller");
 
     // Start with AP device for provisioning
-    let ap_device = interfaces.ap;
+    let ap_device = interfaces.access_point;
     // Store STA device for later use
-    let sta_device = interfaces.sta;
+    let sta_device = interfaces.station;
 
     let gw_ip_addr_str = GW_IP_ADDR_ENV.unwrap_or("192.168.2.1");
     let gw_ip_addr = Ipv4Addr::from_str(gw_ip_addr_str).expect("failed to parse gateway ip");
@@ -102,14 +94,16 @@ async fn main(spawner: Spawner) -> ! {
     > = static_cell::StaticCell::new();
     let wifi_credentials_channel = WIFI_CREDENTIALS_CHANNEL_CELL.uninit().write(Channel::new());
 
-    spawner
-        .spawn(connection(controller, wifi_credentials_channel))
-        .ok();
-    spawner.spawn(net_task(ap_runner)).ok();
-    spawner.spawn(sta_net_task(sta_runner)).ok();
-    spawner.spawn(run_dhcp(ap_stack, gw_ip_addr)).ok();
-    spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
-    spawner.spawn(mqtt_task(sta_stack, sht)).ok();
+    spawner.spawn(
+        connection(controller, wifi_credentials_channel).expect("failed to spawn connection task"),
+    );
+    spawner.spawn(net_task(ap_runner).expect("failed to spawn AP network task"));
+    spawner.spawn(sta_net_task(sta_runner).expect("failed to spawn STA network task"));
+    spawner.spawn(run_dhcp(ap_stack, gw_ip_addr).expect("failed to spawn DHCP task"));
+    spawner.spawn(
+        run_captive_portal(ap_stack, gw_ip_addr).expect("failed to spawn captive portal task"),
+    );
+    spawner.spawn(mqtt_task(sta_stack, sht).expect("failed to spawn MQTT task"));
 
     ap_stack.wait_link_up().await;
     info!("WiFi Provisioning Portal Ready");
@@ -120,9 +114,10 @@ async fn main(spawner: Spawner) -> ! {
         .config_v4()
         .inspect(|c| debug!("ipv4 config: {c:?}"));
 
-    spawner
-        .spawn(run_http_server(ap_stack, wifi_credentials_channel))
-        .ok();
+    spawner.spawn(
+        run_http_server(ap_stack, wifi_credentials_channel)
+            .expect("failed to spawn HTTP server task"),
+    );
 
     // Keep main task alive
     loop {

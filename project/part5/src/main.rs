@@ -44,7 +44,6 @@ use esp_hal::{
     ram,
     timer::timg::TimerGroup,
 };
-use esp_radio::Controller;
 use log::{debug, info};
 
 use crate::http::{run_captive_portal, run_dhcp, run_http_server};
@@ -54,7 +53,7 @@ use crate::network::{
 };
 use crate::ota::{FLASH_STORAGE, http_client_task};
 use crate::status_led::{LED_STATUS, LedStatus, status_led_task};
-use shtcx::asynchronous::shtc3;
+use shtcx2::asynchronous::shtc3;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -93,18 +92,11 @@ async fn main(spawner: Spawner) -> ! {
     LED_STATUS.signal(LedStatus::Provisioning);
 
     // Initialize WiFi radio
-    static ESP_RADIO_CTRL_CELL: static_cell::StaticCell<Controller<'static>> =
-        static_cell::StaticCell::new();
-    let esp_radio_ctrl = &*ESP_RADIO_CTRL_CELL
-        .uninit()
-        .write(esp_radio::init().expect("Failed to initialize radio controller"));
+    let (controller, interfaces) = esp_radio::wifi::new(peripherals.WIFI, Default::default())
+        .expect("Failed to create WiFi controller");
 
-    let (controller, interfaces) =
-        esp_radio::wifi::new(esp_radio_ctrl, peripherals.WIFI, Default::default())
-            .expect("Failed to create WiFi controller");
-
-    let ap_device = interfaces.ap;
-    let sta_device = interfaces.sta;
+    let ap_device = interfaces.access_point;
+    let sta_device = interfaces.station;
 
     // Setup network stacks
     let gw_ip_addr_str = GW_IP_ADDR_ENV.unwrap_or("192.168.2.1");
@@ -124,18 +116,20 @@ async fn main(spawner: Spawner) -> ! {
     let wifi_credentials_channel = WIFI_CREDENTIALS_CHANNEL_CELL.uninit().write(Channel::new());
 
     // Spawn all tasks
-    spawner
-        .spawn(connection(controller, wifi_credentials_channel))
-        .ok();
-    spawner.spawn(net_task(ap_runner)).ok();
-    spawner.spawn(sta_net_task(sta_runner)).ok();
-    spawner.spawn(run_dhcp(ap_stack, gw_ip_addr)).ok();
-    spawner.spawn(run_captive_portal(ap_stack, gw_ip_addr)).ok();
-    spawner.spawn(mqtt_task(sta_stack, sht)).ok();
-    spawner.spawn(http_client_task(sta_stack)).ok();
-    spawner
-        .spawn(status_led_task(peripherals.RMT, peripherals.GPIO2))
-        .ok();
+    spawner.spawn(
+        connection(controller, wifi_credentials_channel).expect("failed to spawn connection task"),
+    );
+    spawner.spawn(net_task(ap_runner).expect("failed to spawn AP network task"));
+    spawner.spawn(sta_net_task(sta_runner).expect("failed to spawn STA network task"));
+    spawner.spawn(run_dhcp(ap_stack, gw_ip_addr).expect("failed to spawn DHCP task"));
+    spawner.spawn(
+        run_captive_portal(ap_stack, gw_ip_addr).expect("failed to spawn captive portal task"),
+    );
+    spawner.spawn(mqtt_task(sta_stack, sht).expect("failed to spawn MQTT task"));
+    spawner.spawn(http_client_task(sta_stack).expect("failed to spawn OTA HTTP client task"));
+    spawner.spawn(
+        status_led_task(peripherals.RMT, peripherals.GPIO2).expect("failed to spawn LED task"),
+    );
 
     // Wait for AP link to come up
     ap_stack.wait_link_up().await;
@@ -147,9 +141,10 @@ async fn main(spawner: Spawner) -> ! {
         .config_v4()
         .inspect(|c| debug!("ipv4 config: {c:?}"));
 
-    spawner
-        .spawn(run_http_server(ap_stack, wifi_credentials_channel))
-        .ok();
+    spawner.spawn(
+        run_http_server(ap_stack, wifi_credentials_channel)
+            .expect("failed to spawn HTTP server task"),
+    );
 
     // Keep main task alive
     loop {

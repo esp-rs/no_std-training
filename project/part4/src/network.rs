@@ -4,7 +4,7 @@ use embassy_sync::channel::Channel;
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_hal::rng::Rng;
 use esp_radio::wifi::{
-    AccessPointConfig, ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent,
+    Config as WifiConfig, Interface, WifiController, ap::AccessPointConfig, sta::StationConfig,
 };
 use heapless::String;
 use log::{debug, error, info};
@@ -18,14 +18,14 @@ pub struct WifiCredentials {
 
 pub struct NetworkStacks {
     pub ap_stack: Stack<'static>,
-    pub ap_runner: Runner<'static, WifiDevice<'static>>,
+    pub ap_runner: Runner<'static, Interface<'static>>,
     pub sta_stack: Stack<'static>,
-    pub sta_runner: Runner<'static, WifiDevice<'static>>,
+    pub sta_runner: Runner<'static, Interface<'static>>,
 }
 
 pub fn create_network_stacks(
-    ap_device: WifiDevice<'static>,
-    sta_device: WifiDevice<'static>,
+    ap_device: Interface<'static>,
+    sta_device: Interface<'static>,
     gw_ip_addr: Ipv4Addr,
 ) -> NetworkStacks {
     let ap_config = embassy_net::Config::ipv4_static(StaticConfigV4 {
@@ -73,12 +73,12 @@ pub fn create_network_stacks(
 }
 
 #[embassy_executor::task]
-pub async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
+pub async fn net_task(mut runner: Runner<'static, Interface<'static>>) {
     runner.run().await
 }
 
 #[embassy_executor::task]
-pub async fn sta_net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
+pub async fn sta_net_task(mut runner: Runner<'static, Interface<'static>>) {
     runner.run().await
 }
 
@@ -92,64 +92,44 @@ pub async fn connection(
     >,
 ) {
     debug!("start connection task");
-    debug!("Device capabilities: {:?}", controller.capabilities());
 
-    // Start in AP mode first for provisioning
-    let ap_config =
-        ModeConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio".into()));
+    // Start in AP mode first for provisioning. `set_config` starts/restarts the
+    // Wi-Fi controller as needed in esp-radio 0.18.
+    let ap_config = WifiConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio"));
     controller
         .set_config(&ap_config)
         .expect("Failed to set WiFi configuration");
-    info!("Starting WiFi in AP mode");
-    controller
-        .start_async()
-        .await
-        .expect("Failed to start WiFi");
-    debug!("WiFi AP started!");
+    info!("WiFi AP started!");
 
     // Wait for credentials
     debug!("Waiting for WiFi credentials...");
     let credentials = wifi_credentials_channel.receiver().receive().await;
     info!("Credentials received! SSID: {}", credentials.ssid);
 
-    // Give the HTTP handler time to send the saved page before dropping AP
+    // Give the HTTP handler time to send the saved page before switching off AP mode.
     debug!("Delaying AP shutdown to allow HTTP response to complete...");
     Timer::after(EmbassyDuration::from_secs(2)).await;
 
-    // Stop the AP
-    debug!("Stopping AP mode...");
-    controller.stop_async().await.expect("Failed to stop WiFi");
-    debug!("AP stopped");
-
-    Timer::after(EmbassyDuration::from_secs(1)).await;
-
-    // Configure and start station mode
+    // Configure station mode. This replaces the AP configuration and restarts Wi-Fi.
     debug!("Configuring station mode...");
-    let client_config = ClientConfig::default()
-        .with_ssid(credentials.ssid.as_str().into())
+    let station_config = StationConfig::default()
+        .with_ssid(credentials.ssid.as_str())
         .with_password(credentials.password.as_str().into());
 
-    let sta_config = ModeConfig::Client(client_config);
+    let sta_config = WifiConfig::Station(station_config);
     controller
         .set_config(&sta_config)
         .expect("Failed to set station mode WiFi configuration");
-
-    debug!("Starting WiFi in station mode...");
-    controller
-        .start_async()
-        .await
-        .expect("Failed to start WiFi");
-    debug!("WiFi station started!");
+    debug!("WiFi station configured!");
 
     // Connect to the network
     info!("Connecting to WiFi network...");
     loop {
         match controller.connect_async().await {
-            Ok(()) => {
+            Ok(_) => {
                 info!("Successfully connected to WiFi!");
 
-                // Wait for disconnect event
-                controller.wait_for_event(WifiEvent::StaDisconnected).await;
+                let _ = controller.wait_for_disconnect_async().await;
                 info!("Disconnected from WiFi, will attempt to reconnect...");
             }
             Err(e) => {

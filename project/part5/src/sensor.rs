@@ -1,7 +1,7 @@
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_hal::i2c::master::I2c;
 use log::{error, info};
-use shtcx::asynchronous::{PowerMode, ShtC3, max_measurement_duration};
+use shtcx2::asynchronous::{AsyncShtC3 as ShtC3, PowerMode, max_measurement_duration};
 
 pub async fn read_sensor(sht: &mut ShtC3<I2c<'static, esp_hal::Async>>) -> Option<(f32, f32)> {
     if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {

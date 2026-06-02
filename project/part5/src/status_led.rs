@@ -1,7 +1,9 @@
 use embassy_sync::signal::Signal;
-use esp_hal::{rmt::Rmt, time::Rate};
-use esp_hal_smartled::{SmartLedsAdapterAsync, buffer_size_async};
-use smart_leds::{RGB8, SmartLedsWriteAsync, brightness, gamma};
+use esp_hal::{
+    gpio::Level,
+    rmt::{Channel, PulseCode, Rmt, Tx, TxChannelConfig},
+    time::Rate,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LedStatus {
@@ -15,38 +17,79 @@ pub static LED_STATUS: Signal<
     LedStatus,
 > = Signal::new();
 
+const BRIGHTNESS: u8 = 10;
+
 #[embassy_executor::task]
 pub async fn status_led_task(
     rmt: esp_hal::peripherals::RMT<'static>,
     gpio2: esp_hal::peripherals::GPIO2<'static>,
 ) {
-    let rmt: Rmt<'_, esp_hal::Async> = {
-        let frequency: Rate = Rate::from_mhz(80);
-        Rmt::new(rmt, frequency)
-    }
-    .expect("Failed to initialize RMT")
-    .into_async();
+    let rmt: Rmt<'_, esp_hal::Async> = Rmt::new(rmt, Rate::from_mhz(80))
+        .expect("Failed to initialize RMT")
+        .into_async();
 
-    let rmt_channel = rmt.channel0;
-    let mut rmt_buffer = [esp_hal::rmt::PulseCode::default(); buffer_size_async(1)];
-    let mut led = SmartLedsAdapterAsync::new(rmt_channel, gpio2, &mut rmt_buffer);
-    let level = 10;
+    let tx_config = TxChannelConfig::default()
+        .with_clk_divider(1)
+        .with_idle_output_level(Level::Low)
+        .with_idle_output(false);
+    let mut channel = esp_hal::rmt::TxChannelCreator::configure_tx(rmt.channel0, &tx_config)
+        .expect("Failed to configure RMT TX channel")
+        .with_pin(gpio2);
 
     // Default state before any signal arrives.
-    led.write(brightness(gamma([RGB8::new(0, 255, 0)].into_iter()), level))
-        .await
-        .unwrap();
+    write_led(&mut channel, (0, 255, 0)).await;
 
     loop {
         let status = LED_STATUS.wait().await;
         let color = match status {
-            LedStatus::Provisioning => RGB8::new(0, 255, 0),
-            LedStatus::Idle => RGB8::new(0, 0, 0),
-            LedStatus::Updating => RGB8::new(0, 0, 255),
+            LedStatus::Provisioning => (0, 255, 0),
+            LedStatus::Idle => (0, 0, 0),
+            LedStatus::Updating => (0, 0, 255),
         };
 
-        led.write(brightness(gamma([color].into_iter()), level))
-            .await
-            .unwrap();
+        write_led(&mut channel, color).await;
     }
+}
+
+async fn write_led(
+    channel: &mut Channel<'_, esp_hal::Async, Tx>,
+    (red, green, blue): (u8, u8, u8),
+) {
+    let mut data = [PulseCode::end_marker(); 25];
+    let mut index = 0;
+
+    // WS2812/SK6812-style LEDs expect GRB byte order.
+    encode_byte(scale(green), &mut data, &mut index);
+    encode_byte(scale(red), &mut data, &mut index);
+    encode_byte(scale(blue), &mut data, &mut index);
+    data[index] = PulseCode::end_marker();
+
+    if let Err(e) = channel.transmit(&data).await {
+        log::warn!("Failed to update status LED: {e:?}");
+    }
+}
+
+fn scale(value: u8) -> u8 {
+    ((value as u16 * BRIGHTNESS as u16) / u8::MAX as u16) as u8
+}
+
+fn encode_byte(byte: u8, data: &mut [PulseCode], index: &mut usize) {
+    for bit in (0..8).rev() {
+        data[*index] = if (byte & (1 << bit)) == 0 {
+            ws2812_bit0()
+        } else {
+            ws2812_bit1()
+        };
+        *index += 1;
+    }
+}
+
+fn ws2812_bit0() -> PulseCode {
+    // 0-bit: ~350 ns high, ~800 ns low at 80 MHz.
+    PulseCode::new(Level::High, 28, Level::Low, 64)
+}
+
+fn ws2812_bit1() -> PulseCode {
+    // 1-bit: ~700 ns high, ~600 ns low at 80 MHz.
+    PulseCode::new(Level::High, 56, Level::Low, 48)
 }
