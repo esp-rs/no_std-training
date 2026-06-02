@@ -27,3 +27,5 @@ Use this guide when reviewing the mdBook content in `training/`.
 - Use `MQTT` and `OTA` as acronyms in prose.
 - Use `SoC`, not `SOC`.
 - Use `eFuse`, not `efuse`.
+- Use `Wokwi`, not `wokwi`, in prose.
+- Capitalize `Cargo` and `Rust` in prose.

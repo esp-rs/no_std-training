@@ -7,14 +7,13 @@ on:
       - "training/**/*.md"
       - "book.toml"
       - ".github/doc-style-guide.md"
-      - ".github/doc-terms.json"
       - ".github/workflows/ai-docs-review.yml"
       - "tools/ai-doc-review/**"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   review:
@@ -32,9 +31,10 @@ jobs:
       - name: Run documentation review
         run: node tools/ai-doc-review/review.mjs
         env:
-          # GitHub Models currently returns 403 with the built-in workflow token
-          # in this repository. Configure AI_DOC_REVIEW_API_KEY with a token that
-          # can access GitHub Models to enable the AI pass in CI.
+          # This token is used only for the GitHub Models inference API, not for
+          # submitting a pull request review. The built-in workflow token cannot
+          # access GitHub Models in this repository, so configure a separate token
+          # to enable the AI pass in CI.
           AI_DOC_REVIEW_API_KEY: ${{ secrets.AI_DOC_REVIEW_API_KEY }}
           AI_DOC_REVIEW_BASE_URL: https://models.github.ai/inference
           AI_DOC_REVIEW_MODEL: ${{ vars.AI_DOC_REVIEW_MODEL || 'openai/gpt-4.1-mini' }}

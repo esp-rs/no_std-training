@@ -14,10 +14,6 @@ function readText(filePath) {
   return fs.readFileSync(path.join(repoRoot, filePath), "utf8");
 }
 
-function readJson(filePath) {
-  return JSON.parse(readText(filePath));
-}
-
 function fileExists(filePath) {
   return fs.existsSync(path.join(repoRoot, filePath));
 }
@@ -102,19 +98,27 @@ function parseChangedLinesFromPatch(patch) {
   return changedLines;
 }
 
-async function fetchPullRequestFiles(owner, repo, pullNumber) {
+function githubApiHeaders() {
   const token = process.env.DOC_REVIEW_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
-  const apiBaseUrl = (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/$/, "");
   const headers = {
     "Accept": "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28"
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
 
+function githubApiUrl(pathname) {
+  const apiBaseUrl = (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/$/, "");
+  return `${apiBaseUrl}${pathname}`;
+}
+
+async function fetchPullRequestFiles(owner, repo, pullNumber) {
   const files = [];
   for (let page = 1; ; page += 1) {
-    const url = `${apiBaseUrl}/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100&page=${page}`;
-    const response = await fetch(url, { headers });
+    const response = await fetch(githubApiUrl(`/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100&page=${page}`), {
+      headers: githubApiHeaders()
+    });
     if (!response.ok) {
       const body = await response.text();
       throw new Error(`GitHub API request failed (${response.status}): ${body}`);
@@ -160,6 +164,8 @@ async function resolveReviewScope(files) {
   return {
     enabled: true,
     reason: `Pull request #${pullNumber}`,
+    owner,
+    repo,
     pullNumber,
     changedLinesByFile
   };
@@ -211,6 +217,7 @@ function serializeReviewScope(reviewScope) {
   return {
     enabled: true,
     reason: reviewScope.reason,
+    repository: `${reviewScope.owner}/${reviewScope.repo}`,
     pullNumber: reviewScope.pullNumber,
     changedLines: Object.fromEntries(
       [...reviewScope.changedLinesByFile.entries()]
@@ -218,77 +225,6 @@ function serializeReviewScope(reviewScope) {
         .map(([file, lines]) => [file, [...lines].sort((a, b) => a - b)])
     )
   };
-}
-
-function spaces(length) {
-  return " ".repeat(Math.max(0, length));
-}
-
-function replaceRangeWithSpaces(line, start, end) {
-  return line.slice(0, start) + spaces(end - start) + line.slice(end);
-}
-
-function sanitizeMarkdownLine(line, state) {
-  const fence = line.match(/^\s*(```|~~~)/);
-  if (fence) {
-    state.inFence = !state.inFence;
-    return spaces(line.length);
-  }
-  if (state.inFence) return spaces(line.length);
-
-  let sanitized = line;
-
-  // Reference link definitions are metadata, not prose.
-  if (/^\s*\[[^\]]+\]:\s+\S+/.test(sanitized)) return spaces(line.length);
-
-  // Markdown link destinations: keep visible link text, hide URLs/paths.
-  sanitized = sanitized.replace(/\]\(([^)]+)\)/g, (match, destination) => "](" + spaces(destination.length) + ")");
-
-  // Bare URLs.
-  sanitized = sanitized.replace(/https?:\/\/\S+/g, (match) => spaces(match.length));
-
-  // Inline code spans.
-  sanitized = sanitized.replace(/`[^`]*`/g, (match) => spaces(match.length));
-
-  // HTML tags.
-  sanitized = sanitized.replace(/<[^>]+>/g, (match) => spaces(match.length));
-
-  return sanitized;
-}
-
-function runDeterministicChecks(files, terms) {
-  const findings = [];
-
-  for (const file of files) {
-    const lines = readText(file).split(/\r?\n/);
-    const state = { inFence: false };
-
-    lines.forEach((line, index) => {
-      const sanitized = sanitizeMarkdownLine(line, state);
-      for (const rule of terms.deterministicChecks || []) {
-        for (const pattern of rule.patterns || []) {
-          const regex = new RegExp(pattern, "g");
-          for (const match of sanitized.matchAll(regex)) {
-            const matchedText = line.slice(match.index, match.index + match[0].length);
-            findings.push({
-              source: "deterministic",
-              category: "terminology",
-              ruleId: rule.id,
-              severity: rule.severity || "warning",
-              confidence: 1,
-              file,
-              line: index + 1,
-              quote: matchedText,
-              message: rule.message || `Use '${rule.preferred}' instead of '${matchedText}'.`,
-              suggestion: rule.preferred ? `Use ${rule.preferred}.` : undefined
-            });
-          }
-        }
-      }
-    });
-  }
-
-  return findings;
 }
 
 function buildBookPayload(files) {
@@ -376,13 +312,12 @@ function resolveAiConfig() {
   };
 }
 
-async function runAiReview(files, terms, reviewScope) {
+async function runAiReview(files, styleGuide, reviewScope) {
   const aiConfig = resolveAiConfig();
   if (!aiConfig) {
     return { skipped: true, reason: "AI_DOC_REVIEW_API_KEY, GITHUB_TOKEN, or OPENAI_API_KEY is not set.", findings: [] };
   }
 
-  const styleGuide = fileExists(".github/doc-style-guide.md") ? readText(".github/doc-style-guide.md") : "";
   const bookPayload = buildBookPayload(files);
   const reviewScopeText = formatReviewScope(reviewScope);
   const { apiKey, model, baseUrl, provider } = aiConfig;
@@ -393,11 +328,11 @@ When a PR diff scope is provided, only report actionable findings on PR changed 
 Return only actionable findings where the quoted text should be changed. Do not report correct usage, and never use suggestions like "No change needed".
 Omit findings when the suggested replacement is identical to the quoted text.
 Do not rewrite whole sections. Do not flag code examples, URLs, commands, fenced code blocks, inline code, Markdown link destinations, or exact package/repository names unless the surrounding prose is wrong.
-Do not invent terminology rules that are not present in the style guide or canonical terms.
+Do not invent terminology rules that are not present in the style guide.
 Return strict JSON with this shape: {"findings":[{"category":"spelling|grammar|terminology|formatting|consistency|voice|continuity","severity":"suggestion|warning|error","confidence":0.0,"file":"path","line":1,"quote":"exact text","message":"why this matters","suggestion":"specific replacement or action"}]}.
 Use severity "error" only for high-confidence factual style violations explicitly covered by the style guide, or clear spelling errors. Limit output to the 50 most useful findings.`;
 
-  const userPrompt = `Style guide:\n${styleGuide}\n\nCanonical terms and deterministic rules:\n${JSON.stringify(terms, null, 2)}\n\nPR diff scope:\n${reviewScopeText}\n\nBook files in reading order:\n${bookPayload}`;
+  const userPrompt = `Style guide:\n${styleGuide}\n\nPR diff scope:\n${reviewScopeText}\n\nBook files in reading order:\n${bookPayload}`;
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -491,36 +426,101 @@ function summarize(findings, aiResult, files, reviewScope, excludedFindingCount)
   return lines.join("\n") + "\n";
 }
 
+function markdownEscape(value) {
+  return String(value || "").replaceAll("`", "\\`");
+}
+
+function buildPullRequestReviewComment(finding) {
+  const parts = [
+    `**Documentation review (${finding.source || "review"}:${finding.category || "general"}, ${finding.severity})**`
+  ];
+
+  if (finding.message) parts.push(markdownEscape(finding.message));
+  if (finding.suggestion) parts.push(`Suggestion: ${markdownEscape(finding.suggestion)}`);
+  return parts.join("\n\n");
+}
+
+async function postPullRequestReview(reviewScope, findings, summary) {
+  const shouldPost = (process.env.DOC_REVIEW_POST_PR_REVIEW || "true").toLowerCase() === "true";
+  if (!shouldPost) return { skipped: true, reason: "DOC_REVIEW_POST_PR_REVIEW is disabled." };
+  if (!reviewScope.enabled) return { skipped: true, reason: reviewScope.reason };
+  if (!process.env.DOC_REVIEW_GITHUB_TOKEN && !process.env.GITHUB_TOKEN) {
+    return { skipped: true, reason: "DOC_REVIEW_GITHUB_TOKEN or GITHUB_TOKEN is not set." };
+  }
+
+  const comments = findings
+    .filter((finding) => finding.file && finding.line)
+    .slice(0, 50)
+    .map((finding) => ({
+      path: finding.file,
+      line: finding.line,
+      side: "RIGHT",
+      body: buildPullRequestReviewComment(finding)
+    }));
+
+  const payload = {
+    event: "COMMENT",
+    body: summary
+  };
+  if (comments.length > 0) payload.comments = comments;
+
+  const response = await fetch(githubApiUrl(`/repos/${reviewScope.owner}/${reviewScope.repo}/pulls/${reviewScope.pullNumber}/reviews`), {
+    method: "POST",
+    headers: {
+      ...githubApiHeaders(),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`GitHub pull request review request failed (${response.status}): ${body}`);
+  }
+
+  const review = await response.json();
+  return { skipped: false, id: review.id, commentCount: comments.length };
+}
+
 async function main() {
   const bookSrc = process.env.DOC_REVIEW_BOOK_SRC || discoverBookSrc();
   const files = discoverMarkdownFiles(bookSrc);
-  const terms = readJson(".github/doc-terms.json");
+  const styleGuide = fileExists(".github/doc-style-guide.md") ? readText(".github/doc-style-guide.md") : "";
   const reviewScope = await resolveReviewScope(files);
 
-  const deterministicFindings = runDeterministicChecks(files, terms);
   let aiResult;
   try {
-    aiResult = await runAiReview(files, terms, reviewScope);
+    aiResult = await runAiReview(files, styleGuide, reviewScope);
   } catch (error) {
     aiResult = { skipped: true, reason: error.message, findings: [] };
     console.log(`::warning title=${commandEscape("docs:ai-review")}::${commandEscape(`AI review failed: ${error.message}`)}`);
   }
 
-  const allFindings = [...deterministicFindings, ...aiResult.findings];
+  const allFindings = aiResult.findings;
   const findings = filterFindingsToReviewScope(allFindings, reviewScope);
   const excludedFindingCount = allFindings.length - findings.length;
+  const summary = summarize(findings, aiResult, files, reviewScope, excludedFindingCount);
+
+  let pullRequestReview;
+  try {
+    pullRequestReview = await postPullRequestReview(reviewScope, findings, summary);
+  } catch (error) {
+    pullRequestReview = { skipped: true, reason: error.message };
+    console.log(`::warning title=${commandEscape("docs:pr-review")}::${commandEscape(`Could not post pull request review: ${error.message}`)}`);
+  }
+
   const report = {
     generatedAt: new Date().toISOString(),
     bookSrc,
     files,
     reviewScope: serializeReviewScope(reviewScope),
+    pullRequestReview,
     ai: aiResult.skipped ? { skipped: true, reason: aiResult.reason } : { skipped: false, provider: aiResult.provider, model: aiResult.model },
     excludedFindingCount,
     findings
   };
 
   fs.writeFileSync(path.join(repoRoot, reportPath), JSON.stringify(report, null, 2) + "\n");
-  const summary = summarize(findings, aiResult, files, reviewScope, excludedFindingCount);
   fs.writeFileSync(path.join(repoRoot, summaryPath), summary);
 
   if (process.env.GITHUB_STEP_SUMMARY) {
