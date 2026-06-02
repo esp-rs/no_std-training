@@ -184,16 +184,32 @@ function extractJson(content) {
   throw new Error("AI response was not JSON.");
 }
 
+function resolveAiConfig() {
+  const configuredBaseUrl = process.env.AI_DOC_REVIEW_BASE_URL || process.env.OPENAI_BASE_URL;
+  const usesGitHubModels = configuredBaseUrl?.includes("models.github.ai") || (!configuredBaseUrl && process.env.GITHUB_TOKEN && !process.env.OPENAI_API_KEY);
+  const defaultBaseUrl = usesGitHubModels ? "https://models.github.ai/inference" : "https://api.openai.com/v1";
+  const defaultModel = usesGitHubModels ? "openai/gpt-4.1-mini" : "gpt-4.1-mini";
+  const apiKey = process.env.AI_DOC_REVIEW_API_KEY || process.env.GITHUB_TOKEN || process.env.OPENAI_API_KEY;
+
+  if (!apiKey) return undefined;
+
+  return {
+    apiKey,
+    model: process.env.AI_DOC_REVIEW_MODEL || process.env.OPENAI_MODEL || defaultModel,
+    baseUrl: (configuredBaseUrl || defaultBaseUrl).replace(/\/$/, ""),
+    provider: usesGitHubModels ? "GitHub Models" : "OpenAI-compatible"
+  };
+}
+
 async function runAiReview(files, terms) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return { skipped: true, reason: "OPENAI_API_KEY is not set.", findings: [] };
+  const aiConfig = resolveAiConfig();
+  if (!aiConfig) {
+    return { skipped: true, reason: "AI_DOC_REVIEW_API_KEY, GITHUB_TOKEN, or OPENAI_API_KEY is not set.", findings: [] };
   }
 
   const styleGuide = fileExists(".github/doc-style-guide.md") ? readText(".github/doc-style-guide.md") : "";
   const bookPayload = buildBookPayload(files);
-  const model = process.env.OPENAI_MODEL || process.env.AI_DOC_REVIEW_MODEL || "gpt-4.1-mini";
-  const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const { apiKey, model, baseUrl, provider } = aiConfig;
 
   const systemPrompt = `You are a meticulous technical editor for an mdBook about Embedded Rust on Espressif hardware.
 Review the whole book as one coherent document. Check spelling, grammar, terminology consistency, formatting consistency, voice/tone consistency, and cross-chapter continuity.
@@ -223,16 +239,16 @@ Use severity "error" only for high-confidence factual style violations or spelli
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`OpenAI API request failed (${response.status}): ${body}`);
+    throw new Error(`${provider} API request failed (${response.status}): ${body}`);
   }
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("OpenAI API response did not contain message content.");
+  if (!content) throw new Error(`${provider} API response did not contain message content.`);
 
   const parsed = extractJson(content);
   const findings = Array.isArray(parsed.findings) ? parsed.findings.map(normalizeAiFinding) : [];
-  return { skipped: false, model, findings };
+  return { skipped: false, provider, model, findings };
 }
 
 function commandEscape(value) {
@@ -269,6 +285,7 @@ function summarize(findings, aiResult, files) {
   if (aiResult.skipped) {
     lines.push(`AI review skipped: ${aiResult.reason}`);
   } else {
+    lines.push(`AI provider: ${aiResult.provider || "OpenAI-compatible"}`);
     lines.push(`AI model: ${aiResult.model}`);
   }
   lines.push("");
@@ -307,7 +324,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     bookSrc,
     files,
-    ai: aiResult.skipped ? { skipped: true, reason: aiResult.reason } : { skipped: false, model: aiResult.model },
+    ai: aiResult.skipped ? { skipped: true, reason: aiResult.reason } : { skipped: false, provider: aiResult.provider, model: aiResult.model },
     findings
   };
 
