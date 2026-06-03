@@ -6,9 +6,11 @@ on:
       - "training/*.md"
       - "training/**/*.md"
       - "book.toml"
+      - "Cargo.lock"
+      - "Cargo.toml"
       - ".github/doc-style-guide.md"
       - ".github/workflows/ai-docs-review.yml"
-      - "tools/ai-doc-review/**"
+      - "xtask/**"
   workflow_dispatch:
 
 permissions:
@@ -23,13 +25,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@v1
         with:
-          node-version: 22
+          toolchain: stable
 
       - name: Run documentation review
-        run: node tools/ai-doc-review/review.mjs
+        run: cargo ai-doc-review
         env:
           # This token is used only for the GitHub Models inference API, not for
           # submitting a pull request review. The built-in workflow token cannot
@@ -40,6 +42,8 @@ jobs:
           AI_DOC_REVIEW_MODEL: ${{ vars.AI_DOC_REVIEW_MODEL || 'openai/gpt-4.1-mini' }}
           DOC_REVIEW_GITHUB_TOKEN: ${{ github.token }}
           DOC_REVIEW_FAIL_ON_ERROR: "true"
+          # Set to "true" to review all Markdown files instead of only PR changed lines.
+          DOC_REVIEW_CHECK_ALL: ${{ vars.DOC_REVIEW_CHECK_ALL || 'false' }}
 
       - name: Upload documentation review report
         if: always()
