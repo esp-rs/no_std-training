@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use chat_rs::{
@@ -11,6 +12,12 @@ use chat_rs::{
     types::{messages, messages::content, options::ChatOptions},
 };
 use clap::Parser;
+use github_copilot_sdk::{
+    Client as CopilotClient, ClientMode as CopilotClientMode,
+    ClientOptions as CopilotClientOptions, LogLevel as CopilotLogLevel,
+    MessageOptions as CopilotMessageOptions, SessionConfig as CopilotSessionConfig,
+    session_events::AssistantMessageData as CopilotAssistantMessageData,
+};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -767,8 +774,57 @@ Use severity \"error\" only for high-confidence factual style violations explici
         "Style guide:\n{style_guide}\n\nPR diff scope:\n{review_scope_text}\n\nBook files in reading order:\n{book_payload}"
     );
 
+    let ai_review = match ai_config.backend {
+        AiBackend::OpenAiCompatible => {
+            complete_openai_compatible_review(&ai_config, system_prompt, &user_prompt).await?
+        }
+        AiBackend::Copilot => {
+            complete_copilot_review(config, &ai_config, system_prompt, &user_prompt).await?
+        }
+    };
+
+    let findings = ai_review
+        .findings
+        .into_iter()
+        .filter_map(|finding| normalize_ai_finding(finding, config.fail_on_ai_error))
+        .map(|finding| reconcile_finding_location(config, finding))
+        .collect();
+
+    Ok(AiResult {
+        skipped: false,
+        reason: None,
+        provider: Some(ai_config.provider),
+        model: Some(ai_config.model),
+        findings,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AiBackend {
+    OpenAiCompatible,
+    Copilot,
+}
+
+#[derive(Debug, Clone)]
+struct AiConfig {
+    api_key: Option<String>,
+    model: String,
+    base_url: Option<String>,
+    provider: String,
+    backend: AiBackend,
+}
+
+async fn complete_openai_compatible_review(
+    ai_config: &AiConfig,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<AiReview> {
+    let base_url = ai_config
+        .base_url
+        .as_deref()
+        .context("OpenAI-compatible provider is missing a base URL")?;
     let mut builder = ChatCompletionsBuilder::new()
-        .with_base_url(&ai_config.base_url)
+        .with_base_url(base_url)
         .with_model(&ai_config.model);
     if let Some(api_key) = &ai_config.api_key {
         builder = builder.with_api_key(api_key);
@@ -794,32 +850,151 @@ Use severity \"error\" only for high-confidence factual style violations explici
         .await
         .map_err(|error| anyhow!("{} API request failed: {}", ai_config.provider, error.err))?
         .expect_complete();
-    let findings = response
-        .content
-        .findings
-        .into_iter()
-        .filter_map(|finding| normalize_ai_finding(finding, config.fail_on_ai_error))
-        .map(|finding| reconcile_finding_location(config, finding))
-        .collect();
-
-    Ok(AiResult {
-        skipped: false,
-        reason: None,
-        provider: Some(ai_config.provider),
-        model: Some(ai_config.model),
-        findings,
-    })
+    Ok(response.content)
 }
 
-#[derive(Debug, Clone)]
-struct AiConfig {
-    api_key: Option<String>,
-    model: String,
-    base_url: String,
-    provider: String,
+async fn complete_copilot_review(
+    config: &Config,
+    ai_config: &AiConfig,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<AiReview> {
+    let mut client_options = CopilotClientOptions::new()
+        .with_mode(CopilotClientMode::Empty)
+        .with_base_directory(copilot_base_directory())
+        .with_log_level(CopilotLogLevel::Error)
+        .with_session_idle_timeout_seconds(env_usize("DOC_REVIEW_AI_TIMEOUT_SECONDS", 180) as u64);
+    client_options.working_directory = config.repo_root.clone();
+    if let Some(api_key) = &ai_config.api_key {
+        client_options = client_options.with_github_token(api_key);
+    } else {
+        client_options = client_options
+            .with_use_logged_in_user(env_bool("AI_DOC_REVIEW_COPILOT_USE_LOGGED_IN_USER", true));
+    }
+
+    let client = CopilotClient::start(client_options)
+        .await
+        .map_err(|error| anyhow!("{} client failed to start: {error}", ai_config.provider))?;
+
+    let mut session_config = CopilotSessionConfig::default()
+        .with_client_name("no-std-training-ai-doc-review")
+        .with_streaming(false)
+        .with_available_tools(Vec::<String>::new())
+        .with_working_directory(config.repo_root.clone());
+    if ai_config.model != COPILOT_DEFAULT_MODEL_LABEL {
+        session_config = session_config.with_model(&ai_config.model);
+    }
+    if let Some(api_key) = &ai_config.api_key {
+        session_config = session_config.with_github_token(api_key);
+    }
+
+    let session = match client.create_session(session_config).await {
+        Ok(session) => session,
+        Err(error) => {
+            let _ = client.stop().await;
+            return Err(anyhow!(
+                "{} session creation failed: {error}",
+                ai_config.provider
+            ));
+        }
+    };
+
+    let prompt = format!(
+        "{system_prompt}\n\n{user_prompt}\n\nReturn only the JSON object. Do not wrap it in Markdown fences or add commentary."
+    );
+    let message_options =
+        CopilotMessageOptions::new(prompt)
+            .with_wait_timeout(Duration::from_secs(
+                env_usize("DOC_REVIEW_AI_TIMEOUT_SECONDS", 180) as u64,
+            ));
+
+    let response = match session.send_and_wait(message_options).await {
+        Ok(Some(event)) => extract_copilot_assistant_content(event)?,
+        Ok(None) => String::new(),
+        Err(error) => {
+            let _ = session.disconnect().await;
+            let _ = client.stop().await;
+            return Err(anyhow!("{} request failed: {error}", ai_config.provider));
+        }
+    };
+
+    let _ = session.disconnect().await;
+    let _ = client.stop().await;
+
+    parse_ai_review_json(&response)
+        .with_context(|| format!("{} returned non-JSON response", ai_config.provider))
+}
+
+fn extract_copilot_assistant_content(event: github_copilot_sdk::SessionEvent) -> Result<String> {
+    if event.event_type != "assistant.message" {
+        return Err(anyhow!(
+            "expected assistant.message event, got {}",
+            event.event_type
+        ));
+    }
+    let message: CopilotAssistantMessageData = event
+        .typed_data()
+        .context("failed to parse Copilot assistant.message event")?;
+    Ok(message.content)
+}
+
+fn parse_ai_review_json(response: &str) -> Result<AiReview> {
+    let trimmed = response.trim();
+    if let Ok(review) = serde_json::from_str(trimmed) {
+        return Ok(review);
+    }
+
+    let unfenced = trimmed
+        .strip_prefix("```json")
+        .or_else(|| trimmed.strip_prefix("```"))
+        .and_then(|value| value.strip_suffix("```"))
+        .map(str::trim)
+        .unwrap_or(trimmed);
+    if let Ok(review) = serde_json::from_str(unfenced) {
+        return Ok(review);
+    }
+
+    let start = unfenced
+        .find('{')
+        .context("response did not contain a JSON object")?;
+    let end = unfenced
+        .rfind('}')
+        .context("response did not contain a complete JSON object")?;
+    serde_json::from_str(&unfenced[start..=end]).context("failed to parse JSON object")
+}
+
+const COPILOT_DEFAULT_MODEL_LABEL: &str = "copilot-default";
+
+fn copilot_base_directory() -> PathBuf {
+    env::var("AI_DOC_REVIEW_COPILOT_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| env::temp_dir().join("ai-doc-review-copilot"))
+}
+
+fn copilot_model_from_env() -> String {
+    env_nonempty("COPILOT_MODEL")
+        .or_else(|| env_nonempty("AI_DOC_REVIEW_MODEL").filter(|model| !model.contains('/')))
+        .unwrap_or_else(|| COPILOT_DEFAULT_MODEL_LABEL.to_owned())
 }
 
 fn resolve_ai_config() -> Option<AiConfig> {
+    let provider = env::var("AI_DOC_REVIEW_PROVIDER")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if provider == "copilot" || provider == "github-copilot" {
+        let api_key = env_nonempty("AI_DOC_REVIEW_API_KEY")
+            .or_else(|| env_nonempty("COPILOT_GITHUB_TOKEN"))
+            .or_else(|| env_nonempty("GH_TOKEN"))
+            .or_else(|| env_nonempty("GITHUB_TOKEN"));
+        return Some(AiConfig {
+            api_key,
+            model: copilot_model_from_env(),
+            base_url: None,
+            provider: "GitHub Copilot SDK".to_owned(),
+            backend: AiBackend::Copilot,
+        });
+    }
+
     let configured_base_url =
         env_nonempty("AI_DOC_REVIEW_BASE_URL").or_else(|| env_nonempty("OPENAI_BASE_URL"));
     let api_key = env_nonempty("AI_DOC_REVIEW_API_KEY")
@@ -850,16 +1025,19 @@ fn resolve_ai_config() -> Option<AiConfig> {
         model: env_nonempty("AI_DOC_REVIEW_MODEL")
             .or_else(|| env_nonempty("OPENAI_MODEL"))
             .unwrap_or_else(|| default_model.to_owned()),
-        base_url: configured_base_url
-            .unwrap_or_else(|| default_base_url.to_owned())
-            .trim_end_matches('/')
-            .to_owned(),
+        base_url: Some(
+            configured_base_url
+                .unwrap_or_else(|| default_base_url.to_owned())
+                .trim_end_matches('/')
+                .to_owned(),
+        ),
         provider: if uses_github_models {
             "GitHub Models"
         } else {
             "OpenAI-compatible"
         }
         .to_owned(),
+        backend: AiBackend::OpenAiCompatible,
     })
 }
 

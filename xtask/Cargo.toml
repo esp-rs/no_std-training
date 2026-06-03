@@ -8,6 +8,7 @@ version = "0.1.0"
 anyhow = "1.0.100"
 chat-rs = { version = "0.5.0", features = ["completions"] }
 clap = { version = "4.5.59", features = ["derive"] }
+github-copilot-sdk = { version = "1.0.0", default-features = false }
 reqwest = { version = "0.13.4", features = ["json"] }
 rumqttd = { version = "0.20.0", default-features = false }
 schemars = "1.1.0"

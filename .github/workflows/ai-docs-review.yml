@@ -16,6 +16,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  models: read
 
 jobs:
   review:
@@ -37,9 +38,14 @@ jobs:
           # submitting a pull request review. The built-in workflow token cannot
           # access GitHub Models in this repository, so configure a separate token
           # to enable the AI pass in CI.
-          AI_DOC_REVIEW_API_KEY: ${{ secrets.AI_DOC_REVIEW_API_KEY }}
-          AI_DOC_REVIEW_BASE_URL: https://models.github.ai/inference
-          AI_DOC_REVIEW_MODEL: ${{ vars.AI_DOC_REVIEW_MODEL || 'openai/gpt-4.1-mini' }}
+          # AI_DOC_REVIEW_API_KEY: ${{ github.token }}
+          # AI_DOC_REVIEW_BASE_URL: https://models.github.ai/inference
+          # AI_DOC_REVIEW_MODEL: openai/gpt-4.1-mini
+          AI_DOC_REVIEW_PROVIDER: copilot
+          AI_DOC_REVIEW_API_KEY: ${{ github.token }}
+          # AI_DOC_REVIEW_API_KEY: ${{ secrets.AI_DOC_REVIEW_API_KEY }}
+          # AI_DOC_REVIEW_BASE_URL: https://models.github.ai/inference
+          # AI_DOC_REVIEW_MODEL: ${{ vars.AI_DOC_REVIEW_MODEL || 'openai/gpt-4.1-mini' }}
           DOC_REVIEW_GITHUB_TOKEN: ${{ github.token }}
           DOC_REVIEW_FAIL_ON_ERROR: "true"
           # Set to "true" to review all Markdown files instead of only PR changed lines.
