@@ -859,12 +859,18 @@ async fn complete_copilot_review(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<AiReview> {
+    require_copilot_token_in_actions(ai_config.api_key.as_deref())?;
+    reject_actions_github_token_for_copilot(ai_config.api_key.as_deref())?;
+
     let mut client_options = CopilotClientOptions::new()
         .with_mode(CopilotClientMode::Empty)
         .with_base_directory(copilot_base_directory())
         .with_log_level(CopilotLogLevel::Error)
         .with_session_idle_timeout_seconds(env_usize("DOC_REVIEW_AI_TIMEOUT_SECONDS", 180) as u64);
     client_options.working_directory = config.repo_root.clone();
+    if !env_bool("AI_DOC_REVIEW_COPILOT_ALLOW_ACTIONS_TOKEN", false) {
+        client_options.env_remove.push("GITHUB_TOKEN".into());
+    }
     if let Some(api_key) = &ai_config.api_key {
         client_options = client_options.with_github_token(api_key);
     } else {
@@ -977,6 +983,34 @@ fn copilot_model_from_env() -> String {
         .unwrap_or_else(|| COPILOT_DEFAULT_MODEL_LABEL.to_owned())
 }
 
+fn require_copilot_token_in_actions(api_key: Option<&str>) -> Result<()> {
+    if env_bool("GITHUB_ACTIONS", false) && api_key.is_none() {
+        return Err(anyhow!(
+            "GitHub Copilot SDK requires a Copilot-enabled user token in AI_DOC_REVIEW_API_KEY or COPILOT_GITHUB_TOKEN when running in GitHub Actions."
+        ));
+    }
+    Ok(())
+}
+
+fn reject_actions_github_token_for_copilot(api_key: Option<&str>) -> Result<()> {
+    if env_bool("AI_DOC_REVIEW_COPILOT_ALLOW_ACTIONS_TOKEN", false) {
+        return Ok(());
+    }
+    if !env_bool("GITHUB_ACTIONS", false) {
+        return Ok(());
+    }
+    let Some(api_key) = api_key else {
+        return Ok(());
+    };
+    if env_nonempty("GITHUB_TOKEN").as_deref() == Some(api_key) {
+        return Err(anyhow!(
+            "GitHub Copilot SDK cannot authenticate with the GitHub Actions GITHUB_TOKEN. \
+Use a Copilot-enabled user token in AI_DOC_REVIEW_API_KEY or COPILOT_GITHUB_TOKEN, and run fork PRs via a safe pull_request_target workflow."
+        ));
+    }
+    Ok(())
+}
+
 fn resolve_ai_config() -> Option<AiConfig> {
     let provider = env::var("AI_DOC_REVIEW_PROVIDER")
         .unwrap_or_default()
@@ -984,8 +1018,7 @@ fn resolve_ai_config() -> Option<AiConfig> {
     if provider == "copilot" || provider == "github-copilot" {
         let api_key = env_nonempty("AI_DOC_REVIEW_API_KEY")
             .or_else(|| env_nonempty("COPILOT_GITHUB_TOKEN"))
-            .or_else(|| env_nonempty("GH_TOKEN"))
-            .or_else(|| env_nonempty("GITHUB_TOKEN"));
+            .or_else(|| env_nonempty("GH_TOKEN"));
         return Some(AiConfig {
             api_key,
             model: copilot_model_from_env(),
