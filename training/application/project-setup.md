@@ -68,7 +68,7 @@ Let's quickly walk through the purpose of each of these files:
 The generated `Cargo.toml` comes pre-populated with a number of dependencies, whose purposes are briefly described below:
 
 - [`esp-hal`][esp-hal] - The Hardware Abstraction Layer. Provides access to on-chip peripherals using high-level APIs.
-- [`esp-rtos`][esp-rtos] - Provides the runtime necessary to run asynchronous code on top of `esp-hal`.
+- [`esp-rtos`][esp-rtos] - Provides the runtime support necessary to run asynchronous code on top of `esp-hal`.
 - [`esp-bootloader-esp-idf`][esp-bootloader-esp-idf] - Support package for using the ESP-IDF bootloader.
 - [`embassy-executor`][embassy-executor] - Asynchronous executor for embedded devices. Allows us to run one or more asynchronous tasks.
 - [`embassy-time`][embassy-time] - Asynchronous timekeeping, delays, and timeouts.

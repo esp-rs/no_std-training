@@ -33,7 +33,7 @@ We use icons to mark different kinds of information in the book:
 - ✅ Call for action.
 - ⚠️ Warnings, details that require special attention.
 - 🔎 Knowledge that dives deeper into a subject but which you are not required to understand before proceeding.
-- 💡 Hints that might help you during the exercises
+- 💡 Hints that might help you during the exercises.
 
 > Example note: Notes like this one contain helpful information
 
@@ -54,14 +54,14 @@ Anchor comments can be ignored, they are only used to introduce those parts of c
 
 This book is distributed under the following licenses:
 
-- The code contained within this book are licensed under the terms of both the [MIT License] and the [Apache License v2.0].
+- The code contained within this book is licensed under the terms of both the [MIT License] and the [Apache License v2.0].
 - The written prose, pictures and diagrams contained within this book are licensed under the terms of the Creative Commons [CC-BY-SA v4.0] license.
 
 If you want to use our text or images in your work, you must:
 
-- Give the appropriate credit (i.e. mention this book on your slide, and provide a link to the relevant page)
-- Provide a link to the [CC-BY-SA v4.0] licence
-- Indicate if you have changed the material in any way, and make any changes to our material available under the same licence
+- Give the appropriate credit (i.e. mention this book on your slide, and provide a link to the relevant page).
+- Provide a link to the [CC-BY-SA v4.0] licence.
+- Indicate if you have changed the material in any way, and make any changes to our material available under the same licence.
 
 [MIT License]: https://opensource.org/licenses/MIT
 [Apache License v2.0]: http://www.apache.org/licenses/LICENSE-2.0

@@ -2,7 +2,7 @@
 
 In this training we will be building a simple data-logger application. The application will connect to a Wi-Fi network, read data from a sensor, and send the data to an MQTT broker.
 
-The intent of this training is to produce an application which resembles a "real-world" project, covering what we consider to be some essential topics, without requiring the user to write thousands of lines of code before arriving at a finished product.
+The intent of this training is to produce an application which resembles a "real-world" project, covering what we consider to be some essential topics, without requiring you to write thousands of lines of code before arriving at a finished product.
 
 - First, in [Project Setup](./project-setup.md), we will guide you through the process of initializing a project. We will generate a new skeleton project and explain its components.
 - In [Reading Sensor Data](./reading-sensor-data.md), we will start with device initialization, so that our board is properly configured and ready to use moving forward. Next, we read data from a connected temperature/humidity sensor over the I2C bus.
