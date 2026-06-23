@@ -2,6 +2,8 @@ name: Book CI
 
 on:
   push:
+    branches:
+      - main
     paths:
       - "training/"
       - "training/**"
