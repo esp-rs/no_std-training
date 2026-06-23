@@ -8,9 +8,9 @@ The goal of this book is to provide a detailed getting-started guide for using t
 
 This book will guide users through the process of creating a `no_std` Rust application using [esp-hal], demonstrating the use of various hardware peripherals as we progress. More information regarding the application we will be building can be found in the [Project Overview] chapter.
 
-We assume some familiarity with with Rust, with more details in the [Prerequisites] chapter.
+We assume some familiarity with Rust; see the [Prerequisites] chapter for more details.
 
-You can join the [esp-rs community] on Matrix for any technical questions or issuewaws you may have. The community is open to everybody.
+You can join the [esp-rs community] on Matrix for any technical questions or issues you may have. The community is open to everybody.
 
 [esp-hal]: https://github.com/esp-rs/esp-hal
 [esp-hal/examples]: https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.1/examples
@@ -32,7 +32,7 @@ We use icons to mark different kinds of information in the book:
 
 - ✅ Call for action.
 - ⚠️ Warnings, details that require special attention.
-- 🔎 Knowledge that dives deeper into a subject but which you are not required to understand, proceeding.
+- 🔎 Knowledge that dives deeper into a subject but which you are not required to understand before proceeding.
 - 💡 Hints that might help you during the exercises
 
 > Example note: Notes like this one contain helpful information

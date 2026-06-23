@@ -140,7 +140,7 @@ async fn main(spawner: Spawner) -> ! {
 }
 ```
 
-This should mostly be straight-forward, however there are a few interesting parts which we will explain briefly.
+This should mostly be straightforward, however, there are a few interesting parts which we will explain briefly.
 
 ### Application Description
 
