@@ -17,3 +17,7 @@ ota/
 
 # Generated book files
 book/
+
+# Generated documentation review reports
+doc-review-report.json
+doc-review-summary.md

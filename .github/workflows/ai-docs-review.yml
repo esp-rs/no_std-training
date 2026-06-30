@@ -1,0 +1,93 @@
+name: AI Docs Review
+
+on:
+  pull_request:
+    paths:
+      - "training/*.md"
+      - "training/**/*.md"
+      - "book.toml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - ".github/doc-style-guide.md"
+      - ".github/workflows/ai-docs-review.yml"
+      - "xtask/**"
+  pull_request_target:
+    paths:
+      - "training/*.md"
+      - "training/**/*.md"
+      - "book.toml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - ".github/doc-style-guide.md"
+      - ".github/workflows/ai-docs-review.yml"
+      - "xtask/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Review documentation consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code to build review tool
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build trusted documentation review tool
+        run: |
+          cargo build --locked --package xtask --bin ai-doc-review --release
+          cp target/release/ai-doc-review /tmp/ai-doc-review
+
+      - name: Checkout pull request content
+        if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Run documentation review (smoke test)
+        if: github.event_name == 'pull_request'
+        run: /tmp/ai-doc-review
+        env:
+          AI_DOC_REVIEW_PROVIDER: copilot
+          AI_DOC_REVIEW_API_KEY: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL || 'copilot-default' }}
+          DOC_REVIEW_FAIL_ON_ERROR: "false"
+          DOC_REVIEW_POST_PR_REVIEW: "false"
+          # Review all Markdown files during smoke tests to avoid PR diff API calls.
+          DOC_REVIEW_CHECK_ALL: "true"
+
+      - name: Run documentation review
+        if: github.event_name != 'pull_request'
+        run: /tmp/ai-doc-review
+        env:
+          # Copilot SDK needs a real Copilot-enabled user token. The built-in
+          # GITHUB_TOKEN cannot authenticate to Copilot, especially on fork PRs.
+          AI_DOC_REVIEW_PROVIDER: copilot
+          AI_DOC_REVIEW_API_KEY: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL || 'copilot-default' }}
+          DOC_REVIEW_GITHUB_TOKEN: ${{ github.token }}
+          DOC_REVIEW_FAIL_ON_ERROR: "true"
+          # Set to "true" to review all Markdown files instead of only PR changed lines.
+          DOC_REVIEW_CHECK_ALL: ${{ vars.DOC_REVIEW_CHECK_ALL || 'false' }}
+
+      - name: Upload documentation review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-review-report
+          path: |
+            doc-review-report.json
+            doc-review-summary.md
+          if-no-files-found: ignore
