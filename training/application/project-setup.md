@@ -77,9 +77,9 @@ The generated `Cargo.toml` comes pre-populated with a number of dependencies, wh
 
 Additional dependencies will be included in later chapters as well.
 
-[esp-hal]: https://docs.espressif.com/projects/rust/esp-hal/1.0.0/esp32c3/esp_hal/index.html
-[esp-rtos]: https://docs.espressif.com/projects/rust/esp-rtos/0.2.0/esp32c3/esp_rtos/index.html
-[esp-bootloader-esp-idf]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.4.0/esp32c3/esp_bootloader_esp_idf/index.html
+[esp-hal]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/index.html
+[esp-rtos]: https://docs.espressif.com/projects/rust/esp-rtos/0.3.0/esp32c3/esp_rtos/index.html
+[esp-bootloader-esp-idf]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.5.0/esp32c3/esp_bootloader_esp_idf/index.html
 [embassy-executor]: https://docs.rs/embassy-executor/latest/embassy_executor/
 [embassy-time]: https://docs.rs/embassy-time/latest/embassy_time/
 [critical-section]: https://docs.rs/critical-section/latest/critical_section/
@@ -110,7 +110,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 }
 
 // This creates a default app-descriptor required by the ESP-IDF bootloader.
-// For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
+// For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[allow(
@@ -119,7 +119,6 @@ esp_bootloader_esp_idf::esp_app_desc!();
 )]
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
-    // generator version: 1.2.0
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -136,7 +135,7 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_secs(1)).await;
     }
 
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0/examples
+    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/main/examples
 }
 ```
 
@@ -154,7 +153,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 No further action is required. See the [ESP-IDF Documentation] for further details.
 
-[ESP-IDF Documentation]: https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32c3/api-reference/system/app_image_format.html#application-description
+[ESP-IDF Documentation]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/system/app_image_format.html#application-description
 
 ### `#[esp_rtos::main]` Macro
 
@@ -169,4 +168,4 @@ async fn main(spawner: Spawner) -> ! {
 
 This macro creates a new instance of an Embassy `Executor` and spawns the `main` function as an asynchronous task.
 
-[main]: https://docs.espressif.com/projects/rust/esp-rtos/0.2.0/esp32c3/esp_rtos/attr.main.html
+[main]: https://docs.espressif.com/projects/rust/esp-rtos/0.3.0/esp32c3/esp_rtos/attr.main.html
