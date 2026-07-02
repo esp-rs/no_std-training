@@ -9,7 +9,7 @@ pub async fn read_sensor(sht: &mut ShtC3<I2c<'static, esp_hal::Async>>) -> Optio
         error!("Failed to start measurement: {:?}", e);
         return None;
     }
-    // Wait for 12.1 ms https://github.com/Fristi/shtcx-rs/blob/feature/async-support/src/asynchronous.rs#L413-L424
+    // Wait for the maximum measurement duration reported by the sensor driver.
     let duration = max_measurement_duration(sht, PowerMode::NormalMode);
     Timer::after(Duration::from_micros(duration.into())).await;
 
