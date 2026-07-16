@@ -62,7 +62,7 @@ This enables `info` logs for this application while keeping other modules at `wa
 
 [`esp_hal::init`][esp-hal-init] applies that configuration. It sets up the CPU clock and watchdog, then returns the peripherals and clocks needed by the HAL.
 
-The returned peripherals are represented by values that can be moved into drivers. This ownership model is important: once `peripherals.I2C0` has been moved into the I2C driver, no other driver can accidentally use the same hardware block.
+The important value for the next steps is `peripherals`. It contains one Rust value for each hardware block and pin. When we later create drivers, we pass those values into the driver constructors. That transfer of ownership is how `esp-hal` prevents accidental double-use of hardware: once `peripherals.I2C0` has been moved into the I2C driver below, no other driver can use the same I2C peripheral.
 
 ### `esp_rtos::start`
 
@@ -100,7 +100,7 @@ Finally, `shtc3(i2c)` wraps the I2C bus in the sensor-specific driver from the [
 
 The SHTC3 is a temperature and humidity sensor controlled over I2C. The [SHTC3 datasheet][shtc3-datasheet] describes the command set, measurement modes, timing requirements, and conversion formulas. We do not need to implement those details manually; the `shtcx2` crate sends the commands and converts the raw values for us.
 
-A measurement has three steps:
+The application still needs to follow the sensor's measurement sequence. A reading is not returned by a single I2C transaction; instead, we:
 
 1. Ask the sensor to start a measurement.
 2. Wait until the measurement is complete.
@@ -112,11 +112,11 @@ In code this looks like:
 {{#include ../../project/part1/src/main.rs:read_measurement}}
 ```
 
-We use `PowerMode::NormalMode`, which is the higher-precision measurement mode. Starting the measurement only sends an I2C command to the sensor; the temperature and humidity conversion then happens inside the SHTC3.
+We use `PowerMode::NormalMode`, which is the higher-precision measurement mode. After `start_measurement(...)`, the SHTC3 is busy converting the temperature and humidity internally. If we try to read immediately, the sensor may not acknowledge the I2C read yet.
 
-This is why the delay is still needed even though the I2C driver is async. Async I2C lets us await the I2C transfer itself, but it does not automatically know when the sensor's internal measurement is finished. For the measurement commands used by the driver, clock stretching is disabled, and the datasheet specifies that the sensor may NACK I2C traffic while the measurement is in progress. The safe approach is therefore to wait for the maximum measurement duration reported by `max_measurement_duration(...)` before trying to read the result.
+There are a few ways a sensor can tell us that a measurement is ready. Some sensors expose a data-ready interrupt pin; the SHTC3 used on this board is a 4-pin I2C device (`VDD`, `SCL`, `SDA`, and `VSS`), so there is no interrupt pin for this example to await. The SHTC3 also supports clock stretching, but the measurement commands used by this driver do not enable it. We therefore wait for the maximum measurement duration reported by `max_measurement_duration(...)` before trying to read the result.
 
-Because this wait is done with `Timer::after(...).await`, it does not busy-wait. The executor can run other tasks while the sensor is busy.
+This wait is separate from the async I2C transfers. Async I2C lets the task yield while I2C commands are sent or received; `Timer::after(...).await` lets the task yield while the sensor performs the measurement. In both cases, the executor can run other work instead of busy-waiting.
 
 The returned measurement exposes typed temperature and humidity values:
 
