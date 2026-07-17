@@ -159,6 +159,7 @@ At this point the application can initialize the board, configure an async I2C d
 [`log`]: https://docs.rs/log/latest/log/
 [env-logger]: https://docs.rs/env_logger/latest/env_logger/
 [`espflash`]: https://github.com/esp-rs/espflash/
+<!-- TODO: Use /latest/ when new docs are redeployed -->
 [esp-hal-init]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/fn.init.html
 [esp-hal-config]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/struct.Config.html
 [esp-hal-async]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/struct.Async.html
