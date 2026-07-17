@@ -41,6 +41,9 @@ jobs:
           use-linkcheck: true
           use-mermaid: true
 
+      - name: Install shiftinclude preprocessor
+        run: cargo install mdbook-shiftinclude --locked
+
       - name: Build the contents of the book
         run: mdbook build -d ../output/
 

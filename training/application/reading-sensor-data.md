@@ -23,7 +23,7 @@ The `panic-handler` feature of `esp-backtrace` provides the panic handler for us
 First, we initialize the logger:
 
 ```rust,ignore
-{{#include ../../project/part1/src/main.rs:logger_init}}
+{{#shiftinclude auto:../../project/part1/src/main.rs:logger_init}}
 ```
 
 This lets us use the standard [`log`] macros. In this chapter we use `info!` to print successful temperature and humidity readings, and `error!` to report failures while starting or reading a measurement.
@@ -57,7 +57,7 @@ This enables `info` logs for this application while keeping other modules at `wa
 [`esp_hal::Config`][esp-hal-config] describes the system configuration that should be applied during HAL initialization. It is a non-exhaustive type, so we create it with `Config::default()` and then adjust the parts we care about. In this application, we use `with_cpu_clock(CpuClock::max())` to request the maximum CPU clock:
 
 ```rust,ignore
-{{#include ../../project/part1/src/main.rs:esp_hal_init}}
+{{#shiftinclude auto:../../project/part1/src/main.rs:esp_hal_init}}
 ```
 
 [`esp_hal::init`][esp-hal-init] applies that configuration. It sets up the CPU clock and watchdog, then returns the peripherals and clocks needed by the HAL.
@@ -69,7 +69,7 @@ The important value for the next steps is `peripherals`. It contains one Rust va
 The application uses async Rust through [Embassy]. [`esp_rtos::start`][esp-rtos-start] starts the scheduler used by `esp-rtos` and Embassy. It needs a hardware timer and a software interrupt:
 
 ```rust,ignore
-{{#include ../../project/part1/src/main.rs:esp_rtos_start}}
+{{#shiftinclude auto:../../project/part1/src/main.rs:esp_rtos_start}}
 ```
 
 The timer is used to drive time-based async operations, such as `Timer::after(...)`. The software interrupt is used by the runtime to wake tasks.
@@ -79,7 +79,7 @@ The timer is used to drive time-based async operations, such as `Timer::after(..
 Next we create an I2C bus driver for the sensor:
 
 ```rust,ignore
-{{#include ../../project/part1/src/main.rs:i2c_driver}}
+{{#shiftinclude auto:../../project/part1/src/main.rs:i2c_driver}}
 ```
 
 [`I2c::new`][i2c-new] takes ownership of the I2C peripheral and a configuration. The ESP32-C3-DevKit-RUST-2 connects the SHTC3 sensor to GPIO10 for SDA and GPIO8 for SCL, so we attach those pins with the `with_*` methods.
@@ -109,7 +109,7 @@ The application still needs to follow the sensor's measurement sequence. A readi
 In code this looks like:
 
 ```rust,ignore
-{{#include ../../project/part1/src/main.rs:read_measurement}}
+{{#shiftinclude auto:../../project/part1/src/main.rs:read_measurement}}
 ```
 
 We use `PowerMode::NormalMode`, which is the higher-precision measurement mode. After `start_measurement(...)`, the SHTC3 is busy converting the temperature and humidity internally. If we try to read immediately, the sensor may not acknowledge the I2C read yet.
@@ -121,7 +121,7 @@ This wait is separate from the async I2C transfers. Async I2C lets the task yiel
 The returned measurement exposes typed temperature and humidity values:
 
 ```rust,ignore
-{{#include ../../project/part1/src/main.rs:log_measurement}}
+{{#shiftinclude auto:../../project/part1/src/main.rs:log_measurement}}
 ```
 
 The loop repeats this sequence once per second, logging the latest reading.
