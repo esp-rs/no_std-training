@@ -1,8 +1,12 @@
+# ANCHOR: runner
 [target.riscv32imc-unknown-none-elf]
 runner = "espflash flash --monitor --chip esp32c3"
+# ANCHOR_END: runner
 
+# ANCHOR: log_env
 [env]
 ESP_LOG = "info"
+# ANCHOR_END: log_env
 
 [net]
 retry              = 3     # network retries

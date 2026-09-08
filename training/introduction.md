@@ -13,7 +13,6 @@ We assume some familiarity with Rust; see the [Prerequisites] chapter for more d
 You can join the [esp-rs community] on Matrix for any technical questions or issues you may have. The community is open to everybody.
 
 [esp-hal]: https://github.com/esp-rs/esp-hal
-[esp-hal/examples]: https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.1/examples
 [project overview]: ./application/project-overview.md
 [prerequisites]: ./prerequisites.md
 [esp-rs community]: https://matrix.to/#/#esp-rs:matrix.org
@@ -60,8 +59,8 @@ This book is distributed under the following licenses:
 If you want to use our text or images in your work, you must:
 
 - Give the appropriate credit (i.e. mention this book on your slide, and provide a link to the relevant page).
-- Provide a link to the [CC-BY-SA v4.0] licence.
-- Indicate if you have changed the material in any way, and make any changes to our material available under the same licence.
+- Provide a link to the [CC-BY-SA v4.0] license.
+- Indicate if you have changed the material in any way, and make any changes to our material available under the same license.
 
 [MIT License]: https://opensource.org/licenses/MIT
 [Apache License v2.0]: http://www.apache.org/licenses/LICENSE-2.0

@@ -11,5 +11,7 @@ edition = "2024"
 additional-js      = ["mermaid-init.js", "mermaid.min.js"]
 git-repository-url = "https://github.com/esp-rs/no_std-training"
 
+[preprocessor.shiftinclude]
+
 [preprocessor.mermaid]
 command = "mdbook-mermaid"

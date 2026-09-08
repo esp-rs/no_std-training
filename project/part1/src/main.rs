@@ -12,7 +12,9 @@
 
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
+// ANCHOR: backtrace_import
 use esp_backtrace as _;
+// ANCHOR_END: backtrace_import
 use esp_hal::clock::CpuClock;
 use esp_hal::{
     i2c::master::{Config, I2c},
@@ -22,20 +24,28 @@ use log::{error, info};
 use shtcx2::asynchronous::{PowerMode, max_measurement_duration, shtc3};
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
-// For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
+// For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
+    // ANCHOR: logger_init
     esp_println::logger::init_logger_from_env();
+    // ANCHOR_END: logger_init
+
+    // ANCHOR: esp_hal_init
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
+    // ANCHOR_END: esp_hal_init
 
+    // ANCHOR: esp_rtos_start
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_interrupt =
         esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
+    // ANCHOR_END: esp_rtos_start
 
+    // ANCHOR: i2c_driver
     let sda = peripherals.GPIO10;
     let scl = peripherals.GPIO8;
     let i2c = I2c::new(peripherals.I2C0, Config::default())
@@ -44,15 +54,17 @@ async fn main(_spawner: Spawner) -> ! {
         .with_scl(scl)
         .into_async();
     let mut sht = shtc3(i2c);
+    // ANCHOR_END: i2c_driver
 
     loop {
+        // ANCHOR: read_measurement
         // Read sensor
         if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
             error!("Failed to start measurement: {:?}", e);
             Timer::after(Duration::from_secs(1)).await;
             continue;
         }
-        // Wait for 12.1 ms https://github.com/Fristi/shtcx-rs/blob/feature/async-support/src/asynchronous.rs#L413-L424
+        // Wait for the maximum measurement duration reported by the sensor driver.
         let duration = max_measurement_duration(&sht, PowerMode::NormalMode);
         Timer::after(Duration::from_micros(duration.into())).await;
         let measurement = match sht.get_measurement_result().await {
@@ -63,12 +75,15 @@ async fn main(_spawner: Spawner) -> ! {
                 continue;
             }
         };
+        // ANCHOR_END: read_measurement
 
+        // ANCHOR: log_measurement
         info!(
             "  {:.2} °C | {:.2} %RH",
             measurement.temperature.as_degrees_celsius(),
             measurement.humidity.as_percent(),
         );
+        // ANCHOR_END: log_measurement
         Timer::after(Duration::from_secs(1)).await;
     }
 }
