@@ -6,6 +6,7 @@ version      = "0.1.0"
 
 [dependencies]
 embassy-executor = "0.10.0"
+# ANCHOR: embassy_net
 embassy-net = { version = "0.9.1", features = [
   "dhcpv4",
   "dns",
@@ -13,9 +14,12 @@ embassy-net = { version = "0.9.1", features = [
   "tcp",
   "udp",
 ] }
+# ANCHOR_END: embassy_net
 embassy-time = "0.5.1"
 embedded-io-async = "0.7.0"
+# ANCHOR: esp_alloc
 esp-alloc = "0.10.0"
+# ANCHOR_END: esp_alloc
 esp-backtrace = { version = "0.19.0", features = [
   "esp32c3",
   "panic-handler",
@@ -24,21 +28,27 @@ esp-backtrace = { version = "0.19.0", features = [
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32c3"] }
 esp-hal = { version = "1.1.1", features = ["esp32c3", "log-04", "unstable"] }
 esp-println = { version = "0.17.0", features = ["esp32c3", "log-04"] }
+# ANCHOR: esp_radio
 esp-radio = { version = "0.18.0", features = [
   "esp32c3",
   "log-04",
   "unstable",
   "wifi",
 ] }
+# ANCHOR_END: esp_radio
+# ANCHOR: esp_rtos
 esp-rtos = { version = "0.3.0", features = [
   "embassy",
   "esp-radio",
   "esp32c3",
   "log-04",
 ] }
+# ANCHOR_END: esp_rtos
 log = "0.4.29"
 shtcx2 = { version = "0.1.0", features = ["async"] }
+# ANCHOR: static_cell
 static_cell = "2.1.1"
+# ANCHOR_END: static_cell
 
 [profile.dev]
 # Rust debug is too slow.

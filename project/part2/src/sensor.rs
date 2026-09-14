@@ -3,6 +3,7 @@ use esp_hal::i2c::master::I2c;
 use log::{error, info};
 use shtcx2::asynchronous::{AsyncShtC3 as ShtC3, PowerMode, max_measurement_duration};
 
+// ANCHOR: read_sensor
 pub async fn read_sensor(sht: &mut ShtC3<I2c<'static, esp_hal::Async>>) -> Option<(f32, f32)> {
     // Read sensor
     if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
@@ -26,3 +27,4 @@ pub async fn read_sensor(sht: &mut ShtC3<I2c<'static, esp_hal::Async>>) -> Optio
         }
     }
 }
+// ANCHOR_END: read_sensor

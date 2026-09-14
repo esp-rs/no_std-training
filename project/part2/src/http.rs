@@ -3,9 +3,11 @@ use embassy_net::{IpAddress, Ipv4Address, Stack, dns::DnsQueryType, tcp::TcpSock
 use embedded_io_async::Write;
 use log::{debug, error, info};
 
+// ANCHOR: http_env
 const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
 const HTTP_PORT: Option<&'static str> = option_env!("HTTP_PORT");
 const DEFAULT_HTTP_PORT: u16 = 8080;
+// ANCHOR_END: http_env
 
 pub async fn send_sensor_data(
     stack: Stack<'static>,
@@ -15,6 +17,7 @@ pub async fn send_sensor_data(
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
+    // ANCHOR: http_payload
     // Prepare HTTP payload (JSON)
     let temperature_str = format!("{:.2}", temperature);
     let humidity_str = format!("{:.2}", humidity);
@@ -22,6 +25,7 @@ pub async fn send_sensor_data(
         r#"{{"temperature":{},"humidity":{}}}"#,
         temperature_str, humidity_str
     );
+    // ANCHOR_END: http_payload
 
     let host = match HOST_IP {
         Some(value) if !value.is_empty() => value,
