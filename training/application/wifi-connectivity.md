@@ -48,10 +48,12 @@ Then we create the heap before starting the scheduler or the radio:
 {{#shiftinclude auto:../../project/part2/src/main.rs:heap_init}}
 ```
 
-[`heap_allocator!`][heap-allocator] can be invoked more than once. Each invocation adds a region to the same global allocator:
+[`heap_allocator!`][heap-allocator] can be invoked more than once. Each invocation adds a region to the same global allocator. For the ESP32-C3 used in this training, the calls reserve two heap regions:
 
-- `#[ram(reclaimed)]` places 64 KiB in memory that the second-stage bootloader used during startup. After the application is running, that region is otherwise unused, so it is a good place for heap. See [Allocating Memory][alloc-book] in *The Rust on ESP Book*.
-- The second region adds 36 KiB from regular data RAM.
+- 64 KiB of reclaimed memory, selected by `#[ram(reclaimed)]`.
+- Another 36 KiB of memory.
+
+See [Allocating Memory][alloc-book] in *The Rust on ESP Book* for more details.
 
 > `esp-radio` requires both a heap and a running scheduler. We still call `esp_rtos::start(...)` before `esp_radio::wifi::new(...)`, just as the crate documentation requires.
 
