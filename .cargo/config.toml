@@ -1,3 +1,3 @@
 [alias]
-xtask = "run --package xtask --"
+xtask = "run --package xtask --bin xtask --"
 ai-doc-review = "run --package xtask --bin ai-doc-review --"

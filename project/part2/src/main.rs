@@ -12,16 +12,22 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
+// ANCHOR: alloc_crate
 extern crate alloc;
+// ANCHOR_END: alloc_crate
 
+// ANCHOR: modules
 mod http;
 mod network;
 mod sensor;
+// ANCHOR_END: modules
 
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
 use embassy_time::Duration;
+// ANCHOR: alloc_import
 use esp_alloc as _;
+// ANCHOR_END: alloc_import
 use esp_backtrace as _;
 use esp_hal::{
     clock::CpuClock,
@@ -47,8 +53,10 @@ async fn main(spawner: Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
+    // ANCHOR: heap_init
     esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
     esp_alloc::heap_allocator!(size: 36 * 1024);
+    // ANCHOR_END: heap_init
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_interrupt =
@@ -64,16 +72,21 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let mut sht = shtc3(i2c);
 
+    // ANCHOR: wifi_controller
     let (controller, interfaces) = esp_radio::wifi::new(peripherals.WIFI, Default::default())
         .expect("Failed to create WiFi controller");
 
     let wifi_interface = interfaces.station;
+    // ANCHOR_END: wifi_controller
 
+    // ANCHOR: embassy_net_config
     let config = embassy_net::Config::dhcpv4(Default::default());
 
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
+    // ANCHOR_END: embassy_net_config
 
+    // ANCHOR: stack_init
     // Init network stack
     static STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
         static_cell::StaticCell::new();
@@ -85,9 +98,13 @@ async fn main(spawner: Spawner) -> ! {
             .write(StackResources::<3>::new()),
         seed,
     );
+    // ANCHOR_END: stack_init
+    // ANCHOR: spawn_tasks
     spawner.spawn(connection(controller).expect("failed to spawn connection task"));
     spawner.spawn(net_task(runner).expect("failed to spawn network task"));
+    // ANCHOR_END: spawn_tasks
 
+    // ANCHOR: wait_ip
     stack.wait_link_up().await;
 
     debug!("Waiting to get IP address...");
@@ -98,13 +115,16 @@ async fn main(spawner: Spawner) -> ! {
         }
         embassy_time::Timer::after(Duration::from_millis(500)).await;
     }
+    // ANCHOR_END: wait_ip
 
     loop {
+        // ANCHOR: main_loop
         // Read sensor
         if let Some((temp, humidity)) = read_sensor(&mut sht).await {
             // Send sensor data via HTTP
             let _ = send_sensor_data(stack, temp, humidity).await;
         }
+        // ANCHOR_END: main_loop
 
         // Small delay before next measurement
         embassy_time::Timer::after(Duration::from_secs(1)).await;
