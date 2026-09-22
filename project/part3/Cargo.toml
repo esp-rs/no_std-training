@@ -38,7 +38,9 @@ esp-rtos = { version = "0.3.0", features = [
 ] }
 heapless = "0.9.3"
 log = "0.4.29"
+# ANCHOR: rust_mqtt
 rust-mqtt = { version = "0.5.1", default-features = false, features = ["bump", "v5"] }
+# ANCHOR_END: rust_mqtt
 shtcx2 = { version = "0.1.0", features = ["async"] }
 static_cell = "2.1.1"
 

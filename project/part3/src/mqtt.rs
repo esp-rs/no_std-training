@@ -21,10 +21,13 @@ const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
 
 #[embassy_executor::task]
 pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_hal::Async>>) {
+    // ANCHOR: socket_buffers
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
+    // ANCHOR_END: socket_buffers
 
     loop {
+        // ANCHOR: wait_network
         // Wait for network to be ready before attempting connection
         debug!("Waiting for WiFi link to come up...");
         stack.wait_link_up().await;
@@ -47,9 +50,11 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             debug!("Network config lost, retrying...");
             continue;
         }
+        // ANCHOR_END: wait_network
 
         Timer::after(Duration::from_millis(1_000)).await;
 
+        // ANCHOR: broker_config
         let host = match HOST_IP {
             Some(h) => h,
             None => {
@@ -65,7 +70,9 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
         let port: u16 = BROKER_PORT
             .and_then(|p| p.parse::<u16>().ok())
             .unwrap_or(1884);
+        // ANCHOR_END: broker_config
 
+        // ANCHOR: resolve_broker
         // If host is an IPv4 literal, bypass DNS
         let address = match host.parse::<Ipv4Address>() {
             Ok(ipv4) => IpAddress::Ipv4(ipv4),
@@ -83,7 +90,9 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
                 }
             },
         };
+        // ANCHOR_END: resolve_broker
 
+        // ANCHOR: tcp_connect
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
@@ -96,7 +105,9 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             continue;
         }
         info!("connected!");
+        // ANCHOR_END: tcp_connect
 
+        // ANCHOR: mqtt_connect
         let mut mqtt_buffer_storage = [0; 1024];
         let mut mqtt_buffer = BumpBuffer::new(&mut mqtt_buffer_storage);
         let mut client = Client::<_, _, 1, 1, 1, 1>::new(&mut mqtt_buffer);
@@ -110,21 +121,27 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
             error!("MQTT connect error: {:?}", e);
             continue;
         }
+        // ANCHOR_END: mqtt_connect
 
+        // ANCHOR: publication_options
         let topic = TopicName::new(
             MqttString::from_str("measurement/temperature").expect("valid MQTT topic string"),
         )
         .expect("valid MQTT topic name");
         let publish_options = PublicationOptions::new(TopicReference::Name(topic)).retain();
+        // ANCHOR_END: publication_options
 
         // Main sensor reading and publishing loop
         loop {
+            // ANCHOR: connection_check
             // Check network state before attempting operations
             if !stack.is_link_up() || !stack.is_config_up() {
                 debug!("Network connection lost, reconnecting...");
                 break;
             }
+            // ANCHOR_END: connection_check
 
+            // ANCHOR: read_and_format
             // Read sensor
             let (temp, _) = match read_sensor(&mut sht).await {
                 Some(reading) => reading,
@@ -136,7 +153,9 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
             let mut temperature_string: heapless::String<32> = heapless::String::new();
             write!(temperature_string, "{:.2}", temp).expect("write! failed!");
+            // ANCHOR_END: read_and_format
 
+            // ANCHOR: publish
             if let Err(e) = client
                 .publish(&publish_options, Bytes::from(temperature_string.as_bytes()))
                 .await
@@ -144,6 +163,7 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
                 error!("MQTT publish error: {:?}", e);
                 break;
             }
+            // ANCHOR_END: publish
 
             // Delay
             Timer::after(Duration::from_secs(1)).await;

@@ -15,7 +15,9 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
+// ANCHOR: mqtt_module
 mod mqtt;
+// ANCHOR_END: mqtt_module
 mod network;
 mod sensor;
 
@@ -85,10 +87,14 @@ async fn main(spawner: Spawner) -> ! {
     );
     spawner.spawn(connection(controller).expect("failed to spawn connection task"));
     spawner.spawn(net_task(runner).expect("failed to spawn network task"));
+    // ANCHOR: spawn_mqtt
     spawner.spawn(mqtt_task(stack, sht).expect("failed to spawn MQTT task"));
+    // ANCHOR_END: spawn_mqtt
 
+    // ANCHOR: idle_main
     // Keep main task alive
     loop {
         embassy_time::Timer::after(embassy_time::Duration::from_secs(60)).await;
     }
+    // ANCHOR_END: idle_main
 }
