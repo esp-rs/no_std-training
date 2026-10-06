@@ -18,6 +18,7 @@ use log::{debug, error, info};
 
 use crate::network::WifiCredentials;
 
+// ANCHOR: templates
 // HTML templates embedded at compile time
 const HOME_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -27,6 +28,7 @@ const SAVED_HTML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/templates/saved.html"
 ));
+// ANCHOR_END: templates
 
 // HTTP Handler implementation
 struct HttpHandler {
@@ -65,6 +67,7 @@ impl Handler for HttpHandler {
             path
         );
 
+        // ANCHOR: captive_paths
         // Handle captive portal redirects
         const CAPTIVE_PATHS: &[&str] =
             &["/generate_204", "/gen_204", "/ncsi.txt", "/connecttest.txt"];
@@ -73,9 +76,11 @@ impl Handler for HttpHandler {
                 .await?;
             return Ok(());
         }
+        // ANCHOR_END: captive_paths
 
         // Handle routes
         match (method, path) {
+            // ANCHOR: home_route
             (Method::Get, "/") => {
                 conn.initiate_response(
                     200,
@@ -85,6 +90,7 @@ impl Handler for HttpHandler {
                 .await?;
                 conn.write_all(HOME_HTML.as_bytes()).await?;
             }
+            // ANCHOR_END: home_route
             (Method::Get, "/saved") => {
                 conn.initiate_response(
                     200,
@@ -94,6 +100,7 @@ impl Handler for HttpHandler {
                 .await?;
                 conn.write_all(SAVED_HTML.as_bytes()).await?;
             }
+            // ANCHOR: save_route
             (Method::Post, "/save") => {
                 // Read request body
                 let mut buf = [0u8; 256];
@@ -136,6 +143,7 @@ impl Handler for HttpHandler {
                     }
                 }
             }
+            // ANCHOR_END: save_route
             _ => {
                 conn.initiate_response(404, Some("Not Found"), &[]).await?;
             }
@@ -157,6 +165,7 @@ pub async fn run_http_server(
     const HTTP_PORT: u16 = 80;
     info!("Starting HTTP server on port {HTTP_PORT}");
 
+    // ANCHOR: http_server
     static TCP_BUFFERS: static_cell::StaticCell<TcpBuffers<1, 2048, 2048>> =
         static_cell::StaticCell::new();
     let buffers = TCP_BUFFERS.uninit().write(TcpBuffers::new());
@@ -185,6 +194,7 @@ pub async fn run_http_server(
             Timer::after(EmbassyDuration::from_millis(100)).await;
         }
     }
+    // ANCHOR_END: http_server
 }
 
 #[embassy_executor::task]
@@ -204,6 +214,7 @@ pub async fn run_dhcp(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
         .await
         .expect("Failed to bind DHCP server");
 
+    // ANCHOR: dhcp_server
     loop {
         _ = io::server::run(
             &mut Server::<_, 64>::new_with_et(gw_ip_addr),
@@ -215,6 +226,7 @@ pub async fn run_dhcp(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
         .inspect_err(|e| log::warn!("DHCP server error: {e:?}"));
         Timer::after(EmbassyDuration::from_millis(500)).await;
     }
+    // ANCHOR_END: dhcp_server
 }
 
 #[embassy_executor::task]
@@ -232,6 +244,7 @@ pub async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
     let udp_stack = Udp::new(stack, &buffers);
 
+    // ANCHOR: captive_dns
     loop {
         debug!("Starting Captive Portal DNS server");
         _ = run(
@@ -246,4 +259,5 @@ pub async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
         .inspect_err(|e| log::warn!("Captive Portal DNS server error: {e:?}"));
         Timer::after(EmbassyDuration::from_millis(500)).await;
     }
+    // ANCHOR_END: captive_dns
 }
