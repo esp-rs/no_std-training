@@ -70,6 +70,7 @@ async fn main(spawner: Spawner) -> ! {
         .into_async();
     let sht = shtc3(i2c);
 
+    // ANCHOR: wifi_interfaces
     let (controller, interfaces) = esp_radio::wifi::new(peripherals.WIFI, Default::default())
         .expect("Failed to create WiFi controller");
 
@@ -77,23 +78,31 @@ async fn main(spawner: Spawner) -> ! {
     let ap_device = interfaces.access_point;
     // Store STA device for later use
     let sta_device = interfaces.station;
+    // ANCHOR_END: wifi_interfaces
 
+    // ANCHOR: gateway_ip
     let gw_ip_addr_str = GW_IP_ADDR_ENV.unwrap_or("192.168.2.1");
     let gw_ip_addr = Ipv4Addr::from_str(gw_ip_addr_str).expect("failed to parse gateway ip");
+    // ANCHOR_END: gateway_ip
 
+    // ANCHOR: network_stacks
     let NetworkStacks {
         ap_stack,
         ap_runner,
         sta_stack,
         sta_runner,
     } = create_network_stacks(ap_device, sta_device, gw_ip_addr);
+    // ANCHOR_END: network_stacks
 
+    // ANCHOR: credentials_channel
     // Create WiFi credentials channel
     static WIFI_CREDENTIALS_CHANNEL_CELL: static_cell::StaticCell<
         Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, WifiCredentials, 1>,
     > = static_cell::StaticCell::new();
     let wifi_credentials_channel = WIFI_CREDENTIALS_CHANNEL_CELL.uninit().write(Channel::new());
+    // ANCHOR_END: credentials_channel
 
+    // ANCHOR: spawn_tasks
     spawner.spawn(
         connection(controller, wifi_credentials_channel).expect("failed to spawn connection task"),
     );
@@ -104,7 +113,9 @@ async fn main(spawner: Spawner) -> ! {
         run_captive_portal(ap_stack, gw_ip_addr).expect("failed to spawn captive portal task"),
     );
     spawner.spawn(mqtt_task(sta_stack, sht).expect("failed to spawn MQTT task"));
+    // ANCHOR_END: spawn_tasks
 
+    // ANCHOR: portal_ready
     ap_stack.wait_link_up().await;
     info!("WiFi Provisioning Portal Ready");
     info!("1. Connect to the AP: `esp-radio`");
@@ -118,6 +129,7 @@ async fn main(spawner: Spawner) -> ! {
         run_http_server(ap_stack, wifi_credentials_channel)
             .expect("failed to spawn HTTP server task"),
     );
+    // ANCHOR_END: portal_ready
 
     // Keep main task alive
     loop {

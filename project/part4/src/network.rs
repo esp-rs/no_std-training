@@ -10,11 +10,13 @@ use heapless::String;
 use log::{debug, error, info};
 use serde::Deserialize;
 
+// ANCHOR: wifi_credentials
 #[derive(Clone, Debug, Deserialize)]
 pub struct WifiCredentials {
     pub ssid: String<32>,
     pub password: String<64>,
 }
+// ANCHOR_END: wifi_credentials
 
 pub struct NetworkStacks {
     pub ap_stack: Stack<'static>,
@@ -28,16 +30,19 @@ pub fn create_network_stacks(
     sta_device: Interface<'static>,
     gw_ip_addr: Ipv4Addr,
 ) -> NetworkStacks {
+    // ANCHOR: stack_configs
     let ap_config = embassy_net::Config::ipv4_static(StaticConfigV4 {
         address: Ipv4Cidr::new(gw_ip_addr, 24),
         gateway: Some(gw_ip_addr),
         dns_servers: Default::default(),
     });
     let sta_config = embassy_net::Config::dhcpv4(Default::default());
+    // ANCHOR_END: stack_configs
 
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
+    // ANCHOR: ap_stack
     // Init network stack for AP (provisioning)
     // Increased from 3 to 6 to accommodate: DHCP UDP socket, Captive Portal UDP socket,
     // HTTP TCP socket, and some buffer for concurrent connections
@@ -51,6 +56,7 @@ pub fn create_network_stacks(
             .write(StackResources::<6>::new()),
         seed,
     );
+    // ANCHOR_END: ap_stack
 
     // Init network stack for STA (client connection)
     static STA_STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
@@ -72,6 +78,7 @@ pub fn create_network_stacks(
     }
 }
 
+// ANCHOR: runner_tasks
 #[embassy_executor::task]
 pub async fn net_task(mut runner: Runner<'static, Interface<'static>>) {
     runner.run().await
@@ -81,6 +88,7 @@ pub async fn net_task(mut runner: Runner<'static, Interface<'static>>) {
 pub async fn sta_net_task(mut runner: Runner<'static, Interface<'static>>) {
     runner.run().await
 }
+// ANCHOR_END: runner_tasks
 
 #[embassy_executor::task]
 pub async fn connection(
@@ -93,6 +101,7 @@ pub async fn connection(
 ) {
     debug!("start connection task");
 
+    // ANCHOR: ap_mode
     // Start in AP mode first for provisioning. `set_config` starts/restarts the
     // Wi-Fi controller as needed in esp-radio 0.18.
     let ap_config = WifiConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-radio"));
@@ -100,7 +109,9 @@ pub async fn connection(
         .set_config(&ap_config)
         .expect("Failed to set WiFi configuration");
     info!("WiFi AP started!");
+    // ANCHOR_END: ap_mode
 
+    // ANCHOR: receive_credentials
     // Wait for credentials
     debug!("Waiting for WiFi credentials...");
     let credentials = wifi_credentials_channel.receiver().receive().await;
@@ -109,7 +120,9 @@ pub async fn connection(
     // Give the HTTP handler time to send the saved page before switching off AP mode.
     debug!("Delaying AP shutdown to allow HTTP response to complete...");
     Timer::after(EmbassyDuration::from_secs(2)).await;
+    // ANCHOR_END: receive_credentials
 
+    // ANCHOR: station_mode
     // Configure station mode. This replaces the AP configuration and restarts Wi-Fi.
     debug!("Configuring station mode...");
     let station_config = StationConfig::default()
@@ -121,6 +134,7 @@ pub async fn connection(
         .set_config(&sta_config)
         .expect("Failed to set station mode WiFi configuration");
     debug!("WiFi station configured!");
+    // ANCHOR_END: station_mode
 
     // Connect to the network
     info!("Connecting to WiFi network...");
