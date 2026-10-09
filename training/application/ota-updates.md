@@ -2,7 +2,7 @@
 
 In this chapter we teach the device to update its own firmware. The board periodically asks a server on your computer for a new application image, writes the image to a spare region of flash, and reboots into it. The completed code for this chapter is available in `project/part5/`.
 
-Wi-Fi provisioning and the MQTT task from [Wi-Fi Provisioning](./wifi-provisioning.md) stay the same. The main changes are a custom partition table, flash access from the application, a task that downloads and installs new firmware, and a status LED that shows what the device is doing.
+Wi-Fi provisioning and the MQTT task from [Wi-Fi Provisioning](./wifi-provisioning.md) stay the same. The main changes are a [custom partition table][idf-custom-tables], flash access from the application, a task that downloads and installs new firmware, and a status LED that shows what the device is doing.
 
 ## What Is an OTA Update?
 
@@ -10,7 +10,7 @@ Until now, every new version of the firmware reached the board through the USB c
 
 The difficult part is not the download, but replacing the program that is currently running. The application cannot overwrite itself while it executes, and a power loss in the middle of the update must not leave the device without working firmware.
 
-ESP-IDF solves this with an A/B scheme:
+[ESP-IDF solves this][idf-ota] with an A/B scheme:
 
 1. The flash holds more than one application slot. The application runs from one slot and writes the new image to another.
 2. A small data partition, `otadata`, records which slot should boot next.
@@ -430,6 +430,8 @@ This example shows the complete OTA mechanism, but a product needs more around i
 With OTA updates in place, a device that is provisioned once can receive new firmware for the rest of its life without a cable. In [Wrapping Up](./wrapping-up.md) we will review what we built.
 
 [idf-partition-tables]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-guides/partition-tables.html
+[idf-custom-tables]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-guides/partition-tables.html#creating-custom-tables
+[idf-ota]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/system/ota.html
 [idf-app-image]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/system/app_image_format.html
 [idf-secure-boot]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/security/secure-boot-v2.html
 [idf-app-rollback]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/system/ota.html#app-rollback
