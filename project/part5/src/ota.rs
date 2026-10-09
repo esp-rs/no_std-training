@@ -12,11 +12,14 @@ use crate::status_led::{LED_STATUS, LedStatus};
 const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
 const OTA_CHECK_INTERVAL_SECS: Option<&'static str> = option_env!("OTA_CHECK_INTERVAL_SECS");
 
+// ANCHOR: flash_storage_static
 pub static FLASH_STORAGE: Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     Option<FlashStorage<'static>>,
 > = Mutex::new(None);
+// ANCHOR_END: flash_storage_static
 
+// ANCHOR: ota_interval
 fn ota_check_interval() -> EmbassyDuration {
     const DEFAULT_SECS: u64 = 300;
 
@@ -27,6 +30,7 @@ fn ota_check_interval() -> EmbassyDuration {
 
     EmbassyDuration::from_secs(secs)
 }
+// ANCHOR_END: ota_interval
 
 async fn download_and_flash_firmware(
     stack: Stack<'static>,
@@ -48,6 +52,7 @@ async fn download_and_flash_firmware(
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
+    // ANCHOR: http_request
     let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
     socket.set_timeout(Some(EmbassyDuration::from_secs(30)));
 
@@ -68,6 +73,7 @@ async fn download_and_flash_firmware(
         host_ip_str
     )
     .expect("Failed to format HTTP request");
+    // ANCHOR_END: http_request
 
     socket
         .write_all(http_request.as_bytes())
@@ -117,6 +123,7 @@ async fn download_and_flash_firmware(
                         error!("HTTP Client: Flash storage not available");
                     })?;
 
+                    // ANCHOR: ota_updater
                     // Initialize OTA updater
                     let mut ota_buffer =
                         [0u8; esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN];
@@ -134,7 +141,9 @@ async fn download_and_flash_firmware(
                         })?;
 
                     debug!("HTTP Client: Flashing image to {:?}", part_type);
+                    // ANCHOR_END: ota_updater
 
+                    // ANCHOR: write_firmware
                     // Write any data that came with headers
                     if data_in_header > 0 {
                         let chunk = &header_buffer[data_start..header_len];
@@ -173,9 +182,11 @@ async fn download_and_flash_firmware(
                             }
                         }
                     }
+                    // ANCHOR_END: write_firmware
 
                     debug!("HTTP Client: Firmware written, activating partition...");
 
+                    // ANCHOR: activate_partition
                     // Activate the next partition
                     ota.activate_next_partition().map_err(|e| {
                         error!("HTTP Client: Failed to activate partition: {:?}", e);
@@ -192,6 +203,7 @@ async fn download_and_flash_firmware(
                             error!("HTTP Client: Failed to set OTA state: {:?}", e);
                         }
                     }
+                    // ANCHOR_END: activate_partition
 
                     info!("HTTP Client: OTA update complete");
                     return Ok(());
@@ -251,6 +263,7 @@ pub async fn http_client_task(stack: Stack<'static>) {
             }
         };
 
+        // ANCHOR: apply_update
         // Attempt firmware download - reset if successful
         LED_STATUS.signal(LedStatus::Updating);
 
@@ -264,5 +277,6 @@ pub async fn http_client_task(stack: Stack<'static>) {
 
         LED_STATUS.signal(LedStatus::Idle);
         Timer::after(ota_interval).await;
+        // ANCHOR_END: apply_update
     }
 }

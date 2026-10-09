@@ -2,7 +2,8 @@
 // 1. Start the MQTT server from this repository root:
 // cargo xtask mqtt-server
 // 2. Generate the firmware.bin file (from any of the other parts, for example)
-// espflash save-image --chip esp32c3 target/riscv32imc-unknown-none-elf/release/no_std-training firmware.bin
+// mkdir -p ota
+// espflash save-image --chip esp32c3 --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/no_std-training ota/firmware.bin
 // 3. Run the OTA server from this repository root:
 // cargo xtask ota-server --firmware project/part5/ota/firmware.bin
 // 4. Run the app
@@ -63,6 +64,7 @@ async fn main(spawner: Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
     let peripherals = esp_hal::init(config);
 
+    // ANCHOR: flash_storage
     let mut flash = esp_storage::FlashStorage::new(peripherals.FLASH);
     let mut buffer = [0u8; esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN];
     let pt = esp_bootloader_esp_idf::partitions::read_partition_table(&mut flash, &mut buffer)
@@ -71,6 +73,7 @@ async fn main(spawner: Spawner) -> ! {
 
     // Store flash storage in mutex for OTA updates
     *FLASH_STORAGE.lock().await = Some(flash);
+    // ANCHOR_END: flash_storage
 
     esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
     esp_alloc::heap_allocator!(size: 36 * 1024);
@@ -126,10 +129,12 @@ async fn main(spawner: Spawner) -> ! {
         run_captive_portal(ap_stack, gw_ip_addr).expect("failed to spawn captive portal task"),
     );
     spawner.spawn(mqtt_task(sta_stack, sht).expect("failed to spawn MQTT task"));
+    // ANCHOR: spawn_ota
     spawner.spawn(http_client_task(sta_stack).expect("failed to spawn OTA HTTP client task"));
     spawner.spawn(
         status_led_task(peripherals.RMT, peripherals.GPIO2).expect("failed to spawn LED task"),
     );
+    // ANCHOR_END: spawn_ota
 
     // Wait for AP link to come up
     ap_stack.wait_link_up().await;

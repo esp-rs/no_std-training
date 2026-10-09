@@ -33,12 +33,16 @@ esp-backtrace = { version = "0.19.0", features = [
   "panic-handler",
   "println",
 ] }
+# ANCHOR: esp_bootloader_esp_idf
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32c3"] }
+# ANCHOR_END: esp_bootloader_esp_idf
 esp-hal = { version = "1.1.1", features = ["esp32c3", "unstable"] }
 esp-println = { version = "0.17.0", features = ["esp32c3", "log-04"] }
 esp-radio = { version = "0.18.0", features = ["esp32c3", "unstable", "wifi"] }
 esp-rtos = { version = "0.3.0", features = ["embassy", "esp-radio", "esp32c3"] }
+# ANCHOR: esp_storage
 esp-storage = { version = "0.9.0", features = ["esp32c3"] }
+# ANCHOR_END: esp_storage
 heapless = { version = "0.9.3", features = ["serde"] }
 log = "0.4.29"
 rust-mqtt = { version = "0.5.1", default-features = false, features = ["bump", "v5"] }
