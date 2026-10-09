@@ -145,7 +145,7 @@ The resulting `firmware.bin` is exactly what belongs in an application partition
 
 - An image header that starts with the magic byte `0xE9` and describes the chip and flash settings.
 - The application segments: code and data, each with the address it must be loaded to.
-- The application descriptor created by `esp_app_desc!()`, with the crate version and project name from `Cargo.toml`, and the build date and time.
+- The application descriptor created by `esp_app_desc!()`, with the crate version and project name from `Cargo.toml`, and the build date and time. It sits at the start of the first segment, at a fixed offset, so the device can read the version of an image from its first bytes.
 - A checksum and a SHA-256 digest that the bootloader verifies before it starts the image.
 
 The image does not contain the bootloader or the partition table. Those are already on the device and do not change during an OTA update. Do not use the `--merge` option here: it produces a full flash image, with the bootloader and partition table, which only makes sense when writing the flash from offset `0`.
@@ -153,7 +153,7 @@ The image does not contain the bootloader or the partition table. Those are alre
 Passing `--partition-table` also makes `espflash` check the image against the size of our application partitions instead of its default `factory` partition:
 
 ```text
-App/part. size:    694,304/1,048,576 bytes, 66.21%
+App/part. size:    718,080/1,048,576 bytes, 68.48%
 ```
 
 The exact size depends on your build. If the image ever grows past 1 MiB, it no longer fits in an OTA slot, and you need to change the partition table on every device, which an OTA update cannot do.
@@ -173,7 +173,7 @@ OTA server listening on 0.0.0.0:8080
 Host IP (best effort): 192.168.1.10
 Example: `HOST_IP="192.168.1.10" cargo r -r`
 Remote devices should connect to 192.168.1.10:8080
-Serving `GET /firmware.bin` from `project/part5/ota/firmware.bin` (694304 bytes).
+Serving `GET /firmware.bin` from `project/part5/ota/firmware.bin` (718080 bytes).
 ```
 
 The server reads the file only at startup. After you create a new image, restart the server so it serves the new file.
@@ -211,21 +211,63 @@ The OTA server address comes from the same `HOST_IP` variable as the MQTT broker
 
 ### Requesting the Image
 
-Each check opens a TCP connection to port `8080` of the host and sends the request:
+Each check is handled by `update_firmware`. It uses the client side of [`edge-http`][edge-http-client], the crate that served the provisioning page in the previous chapter, on top of an [`edge-nal-embassy`][edge-nal-embassy] TCP connection to port `8080` of the host:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part5/src/ota.rs:http_request}}
 ```
 
-The request is written by hand into a fixed-capacity [`heapless::String`][heapless-string], so no HTTP client library is needed. Using `HTTP/1.0` asks the server to close the connection after the response. This gives the client a simple rule for the end of the image: the download is complete when a read returns `0` bytes.
+- `TcpBuffers::<1, 1024, 4096>` provides the buffers for one TCP socket: 1 KiB to send the request and 4 KiB to receive the image.
+- [`WithTimeout`][with-timeout] gives every network operation a 30-second limit, so a check that stalls, for example because the computer left the network, ends with an error.
+- `initiate_request` connects and sends `GET /firmware.bin`. The first argument selects `HTTP/1.0` instead of `HTTP/1.1`, which asks the server to close the connection after the response.
+- `initiate_response` reads the status line and headers into `http_buffer`.
 
-The 30-second timeout ends a check that stalls, for example because the computer left the network. If the server is not running, `connect` fails, the task logs the error, and it tries again after the interval.
+If the server is not running, the connection fails, the task logs the error, and it tries again after the interval:
+
+```text
+ERROR - HTTP Client: Request error: Io(Error(Connect(ConnectionReset)))
+```
+
+### Checking the Response
+
+A response is not necessarily an image. The server might answer `404 Not Found`, or a different program might be listening on port `8080`. Before touching the flash, the task checks the headers:
+
+```rust,ignore
+{{#shiftinclude auto:../../project/part5/src/ota.rs:check_response}}
+```
+
+[`split`][edge-http-client] separates the parsed headers from the body. Only `200 OK` is accepted, and the response must announce its size in `Content-Length`, so that the task can later tell a complete download from one that was cut short.
+
+### Checking the Version
+
+The server offers the same image at every check, so the device must decide whether it needs it. The application descriptor answers this: it stores the crate version from `Cargo.toml` at a fixed offset near the start of every image. The layout is described by a few constants:
+
+```rust,ignore
+{{#include ../../project/part5/src/ota.rs:image_layout}}
+```
+
+The task reads the first 80 bytes of the body, which end exactly after the version field, and compares the version with the one of the running firmware:
+
+```rust,ignore
+{{#shiftinclude auto:../../project/part5/src/ota.rs:check_version}}
+```
+
+`image_version` checks both magic numbers before it trusts the bytes in between:
+
+```rust,ignore
+{{#include ../../project/part5/src/ota.rs:image_version}}
+```
+
+- An image starts with `0xE9`, and the application descriptor starts with `0xABCD5432`. A `404` page, a text file, or any other data fails these checks, and the task stops with `Response is not an application image`.
+- The version field is 32 bytes long and padded with zero bytes, so the string ends at the first zero.
+
+The running version comes from `ESP_APP_DESC`, the static created by `esp_app_desc!()` in `main.rs`. If both versions are equal, `update_firmware` returns `Ok(false)` and closes the connection without downloading the rest. To publish an update, you increase `version` in `Cargo.toml`.
+
+The comparison only checks whether the versions differ. A server that offers an older version than the running one would install it as well.
 
 ### Writing the Image to Flash
 
-The response starts with the status line and the headers, followed by an empty line (`\r\n\r\n`) and the image. The task reads into a 1 KiB buffer until it finds that empty line. Any bytes after the empty line are already the beginning of the image and must not be lost.
-
-Once the headers are complete, the task locks `FLASH_STORAGE` and creates an [`OtaUpdater`][ota-updater]:
+Once the image is known to be new, the task locks `FLASH_STORAGE` and creates an [`OtaUpdater`][ota-updater]:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part5/src/ota.rs:ota_updater}}
@@ -241,7 +283,13 @@ The task then writes the image in the order it arrives:
 {{#shiftinclude auto:../../project/part5/src/ota.rs:write_firmware}}
 ```
 
-First, the bytes received together with the headers are written at offset `0`. Then, each chunk of up to 4 KiB from the socket is written right after the previous one, until the server closes the connection.
+First, the 80 bytes already read for the version check are written at offset `0`. Then, each chunk of up to 4 KiB from the body is written right after the previous one. The body reader stops at `Content-Length`, and a read that returns `0` bytes ends the loop.
+
+A read also returns `0` bytes when the server closes the connection early, so the end of the loop does not prove that the image is complete. The task compares the number of written bytes with `Content-Length` and refuses a partial image:
+
+```text
+ERROR - HTTP Client: Download incomplete (359040 of 718080 bytes)
+```
 
 The image is never held in RAM as a whole. With roughly 700 KB of firmware and about 100 KB of heap, it could not be. Flash can only change bits from `1` to `0`, so it must be erased before it is written. The `write` method of the [`Storage`][embedded-storage-storage] trait handles this: it erases each 4 KiB sector as needed and preserves the parts of the sector it does not overwrite.
 
@@ -256,15 +304,15 @@ After the whole image is in the slot, the task tells the bootloader to use it:
 - [`activate_next_partition`][ota-updater] writes a new entry to `otadata` that selects the slot we just filled. This is the moment the update takes effect: before this call, a reset boots the old firmware, and after it, a reset boots the new one.
 - [`set_current_ota_state`][ota-updater] marks the new slot as [`OtaImageState::New`][ota-image-state], a freshly installed image that has not run yet. A bootloader with rollback support uses this state to detect an update that never confirms it works. See [Limitations](#limitations).
 
-Back in the task loop, a successful update ends with a reset:
+Back in the task loop, a reset follows only when `update_firmware` returns `Ok(true)`, that is, when a new image was installed:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part5/src/ota.rs:apply_update}}
 ```
 
-[`software_reset`][software-reset] restarts the chip. The bootloader reads `otadata`, checks the image in the selected slot, and starts it. If the image check fails, for example because the file was not a valid application image, the ESP-IDF bootloader falls back to another bootable application partition.
+[`software_reset`][software-reset] restarts the chip. The bootloader reads `otadata`, verifies the checksum and SHA-256 digest of the image in the selected slot, and starts it. If the verification fails, the ESP-IDF bootloader falls back to another bootable application partition.
 
-If any step fails before `activate_next_partition`, the function returns an error, the old firmware keeps running, and the task tries again after the interval.
+If any step fails before `activate_next_partition`, the function returns an error, the old firmware keeps running, and the task tries again after the interval. An up-to-date firmware also keeps running and checks again after the interval.
 
 ## Status LED
 
@@ -284,7 +332,7 @@ A `Signal` only keeps the most recent value, which is exactly what a status indi
 
 ## Running the Application
 
-This walkthrough flashes the application, provisions it, and then updates it with a modified version of itself. Each of the servers runs in its own terminal.
+This walkthrough flashes the application, provisions it, and then updates it with a newer version of itself. Each of the servers runs in its own terminal.
 
 Start the MQTT broker from the repository root:
 
@@ -318,10 +366,10 @@ No OTA server is running yet, so every check logs a connection error and the old
 
 ### Building the Update
 
-Make a visible change to the application, so that you can recognize the new firmware once it runs. For example, add a log line to `main` after the booted partition is logged:
+The device only installs an image with a different version, so increase `version` in `project/part5/Cargo.toml`:
 
-```rust,ignore
-info!("Hello from the updated firmware!");
+```toml
+version      = "0.2.0"
 ```
 
 Build it with the same environment variables as before. They are baked into the firmware, so an update built without `HOST_IP` would not find the MQTT broker or the OTA server:
@@ -345,6 +393,7 @@ cargo xtask ota-server --firmware project/part5/ota/firmware.bin
 At the next check, the LED turns blue, the server prints `Serving firmware.bin` with the image size, and the device logs the update:
 
 ```text
+INFO - HTTP Client: Updating firmware 0.1.0 -> 0.2.0
 INFO - HTTP Client: Partition activated successfully
 INFO - HTTP Client: OTA update complete
 INFO - HTTP Client: Rebooting into updated firmware
@@ -354,12 +403,17 @@ The device then resets and boots the new image from `ota_0`:
 
 ```text
 INFO - Currently booted partition Ok(Some(PartitionEntry { magic: 20650, raw_type: 0, raw_subtype: 16, offset: 1114112, len: 1048576, label: "ota_0", flags: 0, is_read_only: false, is_encrypted: false }))
-INFO - Hello from the updated firmware!
 ```
 
 The Wi-Fi credentials only lived in RAM, so the updated device starts the provisioning portal again, and the LED turns green. Provision it once more to reconnect it to the network and the MQTT broker.
 
-**Stop the OTA server with `Ctrl+C` after the update.** The firmware does not compare versions: it installs whatever `/firmware.bin` returns. If the server keeps running, the next check installs the same image again into `ota_1`, reboots, and the cycle repeats at every interval.
+The OTA server keeps offering the same image, but the device now runs that version, so the following checks leave it alone:
+
+```text
+INFO - HTTP Client: Firmware 0.2.0 is up to date
+```
+
+Each of these checks closes the connection after the first bytes of the image, so the server prints `failed to write HTTP response body: Broken pipe` after `Serving firmware.bin`. This is expected.
 
 To return to the original firmware, flash it again over USB with `--erase-data-parts ota`, as in the first step.
 
@@ -367,8 +421,8 @@ To return to the original firmware, flash it again over USB with `--erase-data-p
 
 This example shows the complete OTA mechanism, but a product needs more around it:
 
-- **There is no version check.** The device downloads and installs the image at every check. A real device would ask the server for the latest version first, and only download when it differs from its own, for example the version in the application descriptor created by `esp_app_desc!()`.
-- **The download is not validated.** The client does not check the HTTP status code, the `Content-Length`, or the image itself before activating it. It relies on the bootloader to reject a broken image at the next boot.
+- **The version check is minimal.** The device opens a download at every check just to read the version, and installs any version that differs from its own, including an older one. A real device would ask the server for the latest version first, for example through a small metadata file, and only install newer versions.
+- **The image is only partly validated before activation.** The client checks the status code, the magic numbers, and the length, but not the checksum or the SHA-256 digest. A corrupted image is only rejected by the bootloader at the next boot.
 - **The download is not authenticated.** The image travels over plain HTTP from whichever host answers on `HOST_IP`. Anyone who can impersonate that host can install their own firmware. Production devices download over HTTPS and verify signed images, for example with [Secure Boot][idf-secure-boot].
 - **There is no rollback.** The new image is marked `New` but never confirms that it works by setting its state to `Valid`. A bootloader built with [app rollback][idf-app-rollback] support (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` in ESP-IDF) boots such an image once, and returns to the previous slot at the next reset if the image has not confirmed itself by then. Using rollback requires that bootloader and a firmware that marks itself `Valid` once it has checked that it works, for example after reconnecting to the MQTT broker.
 - **Credentials are lost on every update.** As noted in the previous chapter, the Wi-Fi credentials are not stored in flash, so each reboot, including the one after an update, requires provisioning the device again. The `nvs` partition in our table is where they could be stored.
@@ -393,4 +447,6 @@ With OTA updates in place, a device that is provisioned once can receive new fir
 [embedded-storage-storage]: https://docs.rs/embedded-storage/0.3.1/embedded_storage/trait.Storage.html
 [embassy-mutex]: https://docs.rs/embassy-sync/0.8.0/embassy_sync/mutex/struct.Mutex.html
 [embassy-signal]: https://docs.rs/embassy-sync/0.8.0/embassy_sync/signal/struct.Signal.html
-[heapless-string]: https://docs.rs/heapless/0.9.3/heapless/string/type.String.html
+[edge-http-client]: https://docs.rs/edge-http/0.7.0/edge_http/io/client/enum.Connection.html
+[edge-nal-embassy]: https://docs.rs/edge-nal-embassy/0.8.1/edge_nal_embassy/
+[with-timeout]: https://docs.rs/edge-nal/0.6.0/edge_nal/struct.WithTimeout.html

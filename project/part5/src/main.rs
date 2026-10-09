@@ -1,7 +1,8 @@
 // OTA Update
 // 1. Start the MQTT server from this repository root:
 // cargo xtask mqtt-server
-// 2. Generate the firmware.bin file (from any of the other parts, for example)
+// 2. Bump `version` in Cargo.toml, build with the same env vars as step 4, and generate the firmware.bin file
+// (the device only installs images whose version differs from the running one)
 // mkdir -p ota
 // espflash save-image --chip esp32c3 --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/no_std-training ota/firmware.bin
 // 3. Run the OTA server from this repository root:
