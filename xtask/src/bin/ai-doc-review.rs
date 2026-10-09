@@ -209,7 +209,7 @@ async fn run() -> Result<()> {
         Ok(result) => result,
         Err(error) => {
             println!(
-                "::warning title={}::{}",
+                "::error title={}::{}",
                 command_escape("docs:ai-review"),
                 command_escape(format!("AI review failed: {error}"))
             );
@@ -234,21 +234,22 @@ async fn run() -> Result<()> {
         excluded_finding_count,
     );
 
-    let pull_request_review =
+    let (pull_request_review, pull_request_review_failed) =
         match post_pull_request_review(&review_scope, &ai_result.findings, &summary).await {
-            Ok(result) => result,
+            Ok(result) => (result, false),
             Err(error) => {
                 println!(
-                    "::warning title={}::{}",
+                    "::error title={}::{}",
                     command_escape("docs:pr-review"),
                     command_escape(format!("Could not post pull request review: {error}"))
                 );
-                PullRequestReviewReport {
+                let report = PullRequestReviewReport {
                     skipped: true,
                     reason: Some(error.to_string()),
                     id: None,
                     comment_count: None,
-                }
+                };
+                (report, true)
             }
         };
 
@@ -283,6 +284,16 @@ async fn run() -> Result<()> {
     }
 
     annotate(&ai_result.findings);
+
+    if ai_result.skipped {
+        eprintln!("Documentation review failed: the AI review did not run.");
+    }
+    if pull_request_review_failed {
+        eprintln!("Documentation review failed: the pull request review could not be posted.");
+    }
+    if ai_result.skipped || pull_request_review_failed {
+        std::process::exit(1);
+    }
 
     let blocking = ai_result
         .findings
@@ -745,17 +756,8 @@ async fn run_ai_review(
     style_guide: &str,
     review_scope: &ReviewScope,
 ) -> Result<AiResult> {
-    let Some(ai_config) = resolve_ai_config() else {
-        return Ok(AiResult {
-            skipped: true,
-            reason: Some(
-                "AI_DOC_REVIEW_API_KEY, GITHUB_TOKEN, or OPENAI_API_KEY is not set.".to_owned(),
-            ),
-            provider: None,
-            model: None,
-            findings: Vec::new(),
-        });
-    };
+    let ai_config = resolve_ai_config()
+        .context("AI_DOC_REVIEW_API_KEY, GITHUB_TOKEN, or OPENAI_API_KEY is not set.")?;
 
     let book_payload = build_book_payload(config, files)?;
     let review_scope_text = format_review_scope(review_scope);
@@ -1395,12 +1397,9 @@ async fn post_pull_request_review(
         });
     }
     if env_nonempty("DOC_REVIEW_GITHUB_TOKEN").is_none() && env_nonempty("GITHUB_TOKEN").is_none() {
-        return Ok(PullRequestReviewReport {
-            skipped: true,
-            reason: Some("DOC_REVIEW_GITHUB_TOKEN or GITHUB_TOKEN is not set.".to_owned()),
-            id: None,
-            comment_count: None,
-        });
+        return Err(anyhow!(
+            "DOC_REVIEW_GITHUB_TOKEN or GITHUB_TOKEN is not set."
+        ));
     }
 
     let comments = findings
