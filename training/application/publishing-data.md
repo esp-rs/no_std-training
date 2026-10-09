@@ -108,7 +108,9 @@ Once TCP is connected, we can initialize the MQTT client:
 {{#shiftinclude auto:../../project/part3/src/mqtt.rs:mqtt_connect}}
 ```
 
-The 1 KiB `BumpBuffer` supplies working storage for MQTT packets. `ConnectOptions::new().clean_start()` asks the broker to begin without a previous MQTT session, and `esp32c3` identifies this client to the broker. `client.connect(...)` sends the MQTT `CONNECT` packet over the TCP socket and waits for the broker to accept it.
+The 1 KiB `BumpBuffer` supplies working storage for MQTT packets. `clean_start()` asks the broker to begin without a previous MQTT session, and `esp32c3` identifies this client to the broker.
+
+`keep_alive(...)` promises the broker that the client sends a packet at least every 60 seconds. If the broker hears nothing for one and a half times that interval, it considers the client gone and closes the connection. Our publications every second keep the connection alive. The default, `KeepAlive::Infinite`, sends `0` and disables the mechanism, but the local broker rejects connections without a keep alive. `client.connect(...)` sends the MQTT `CONNECT` packet over the TCP socket and waits for the broker to accept it.
 
 TCP and MQTT are separate connection layers. A successful `socket.connect(...)` only establishes a byte stream to the broker. A successful `client.connect(...)` completes the MQTT handshake over that stream.
 
