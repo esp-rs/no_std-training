@@ -1,19 +1,20 @@
 // OTA Update
 // 1. Start the MQTT server from this repository root:
 // cargo xtask mqtt-server
-// 2. Bump `version` in Cargo.toml, build with the same env vars as step 4, and generate the firmware.bin file
-// (the device only installs images whose version differs from the running one)
-// mkdir -p ota
-// espflash save-image --chip esp32c3 --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/no_std-training ota/firmware.bin
-// 3. Run the OTA server from this repository root:
-// cargo xtask ota-server --firmware project/part5/ota/firmware.bin
-// 4. Run the app
+// 2. Flash the app, erasing otadata so it boots from the factory partition
 // Host IP will be printed by xtask command, but if auto-detect fails, you can find it manually by running:
 // ipconfig getifaddr en0 or ip addr show eth0
-// HOST_IP="<IP>" cargo r -r
-// 5. Join the AP network and navigate to http://<MCU_IP>/ to set the wifi credentials.
+// HOST_IP="<IP>" cargo r -r -- --erase-data-parts ota
+// Optional: configure the OTA interval with `OTA_CHECK_INTERVAL_SECS=<seconds>` (default: 300).
+// 3. Join the AP network and navigate to http://<MCU_IP>/ to set the wifi credentials.
 // Once the device stops the AP mode and starts the STA mode connected to the wifi, it will start sending sensor data to the MQTT broker and periodically check for OTA updates.
-// 6. Optional: configure the OTA interval with `OTA_CHECK_INTERVAL_SECS=<seconds>` (default: 300).
+// 4. Bump `version` in Cargo.toml (the device only installs images whose version differs from the running one),
+// build with the same env vars as step 2 without flashing, and generate the firmware.bin file
+// HOST_IP="<IP>" cargo b -r
+// mkdir -p ota
+// espflash save-image --chip esp32c3 --partition-table partitions.csv target/riscv32imc-unknown-none-elf/release/no_std-training ota/firmware.bin
+// 5. Run the OTA server from this repository root:
+// cargo xtask ota-server --firmware project/part5/ota/firmware.bin
 
 #![no_std]
 #![no_main]

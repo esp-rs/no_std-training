@@ -427,7 +427,7 @@ This example shows the complete OTA mechanism, but a product needs more around i
 - **There is no rollback.** The new image is marked `New` but never confirms that it works by setting its state to `Valid`. A bootloader built with [app rollback][idf-app-rollback] support (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` in ESP-IDF) boots such an image once, and returns to the previous slot at the next reset if the image has not confirmed itself by then. Using rollback requires that bootloader and a firmware that marks itself `Valid` once it has checked that it works, for example after reconnecting to the MQTT broker.
 - **Credentials are lost on every update.** As noted in the previous chapter, the Wi-Fi credentials are not stored in flash, so each reboot, including the one after an update, requires provisioning the device again. The `nvs` partition in our table is where they could be stored.
 
-With OTA updates in place, a device that is provisioned once can receive new firmware for the rest of its life without a cable. In [Wrapping Up](./wrapping-up.md) we will review what we built.
+With OTA updates in place, a device in the field can receive new firmware without a cable. In [Wrapping Up](./wrapping-up.md) we will review what we built.
 
 [idf-partition-tables]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-guides/partition-tables.html
 [idf-custom-tables]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-guides/partition-tables.html#creating-custom-tables
