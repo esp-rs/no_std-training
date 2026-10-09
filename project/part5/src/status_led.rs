@@ -41,11 +41,13 @@ pub async fn status_led_task(
 
     loop {
         let status = LED_STATUS.wait().await;
+        // ANCHOR: led_colors
         let color = match status {
             LedStatus::Provisioning => (0, 255, 0),
             LedStatus::Idle => (0, 0, 0),
             LedStatus::Updating => (0, 0, 255),
         };
+        // ANCHOR_END: led_colors
 
         write_led(&mut channel, color).await;
     }

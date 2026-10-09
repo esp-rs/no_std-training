@@ -1,4 +1,5 @@
 use core::fmt::Write;
+use core::num::NonZero;
 use embassy_net::{IpAddress, Ipv4Address, Stack, dns::DnsQueryType, tcp::TcpSocket};
 use embassy_time::{Duration as EmbassyDuration, Timer};
 use log::{debug, error, info};
@@ -9,6 +10,7 @@ use rust_mqtt::{
         Client,
         options::{ConnectOptions, PublicationOptions, TopicReference},
     },
+    config::KeepAlive,
     types::{MqttString, TopicName},
 };
 
@@ -96,7 +98,12 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
         let mut mqtt_buffer_storage = [0; 1024];
         let mut mqtt_buffer = BumpBuffer::new(&mut mqtt_buffer_storage);
         let mut client = Client::<_, _, 1, 1, 1, 1>::new(&mut mqtt_buffer);
-        let connect_options = ConnectOptions::new().clean_start();
+        // rumqttd rejects the default keep alive of 0, which disables keep alive
+        let connect_options = ConnectOptions::new()
+            .clean_start()
+            .keep_alive(KeepAlive::Seconds(
+                NonZero::new(60).expect("non-zero keep alive"),
+            ));
         let client_id = MqttString::from_str("esp32c3").expect("valid MQTT client id");
 
         if let Err(e) = client
