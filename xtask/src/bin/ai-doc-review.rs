@@ -205,11 +205,18 @@ async fn run() -> Result<()> {
     let style_guide = read_optional(&config, ".github/doc-style-guide.md")?;
     let review_scope = resolve_review_scope(&files, config.check_all).await?;
 
+    // Smoke tests on fork PRs run without secrets, so review failures only fail trusted runs.
+    let failure_level = if config.fail_on_error {
+        "error"
+    } else {
+        "warning"
+    };
+
     let mut ai_result = match run_ai_review(&config, &files, &style_guide, &review_scope).await {
         Ok(result) => result,
         Err(error) => {
             println!(
-                "::error title={}::{}",
+                "::{failure_level} title={}::{}",
                 command_escape("docs:ai-review"),
                 command_escape(format!("AI review failed: {error}"))
             );
@@ -239,7 +246,7 @@ async fn run() -> Result<()> {
             Ok(result) => (result, false),
             Err(error) => {
                 println!(
-                    "::error title={}::{}",
+                    "::{failure_level} title={}::{}",
                     command_escape("docs:pr-review"),
                     command_escape(format!("Could not post pull request review: {error}"))
                 );
@@ -285,13 +292,13 @@ async fn run() -> Result<()> {
 
     annotate(&ai_result.findings);
 
-    if ai_result.skipped {
-        eprintln!("Documentation review failed: the AI review did not run.");
-    }
-    if pull_request_review_failed {
-        eprintln!("Documentation review failed: the pull request review could not be posted.");
-    }
-    if ai_result.skipped || pull_request_review_failed {
+    if config.fail_on_error && (ai_result.skipped || pull_request_review_failed) {
+        if ai_result.skipped {
+            eprintln!("Documentation review failed: the AI review did not run.");
+        }
+        if pull_request_review_failed {
+            eprintln!("Documentation review failed: the pull request review could not be posted.");
+        }
         std::process::exit(1);
     }
 
