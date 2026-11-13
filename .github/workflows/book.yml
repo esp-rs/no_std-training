@@ -33,7 +33,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout the repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - uses: jontze/action-mdbook@v4
         with:
