@@ -109,7 +109,7 @@ The application needs to read the partition table and write to the OTA slots. Tw
 {{#include ../../project/part5/Cargo.toml:esp_storage}}
 ```
 
-- [`esp-storage`][esp-storage] provides [`FlashStorage`][flash-storage], a driver for the SPI flash chip that implements the [`embedded-storage`][embedded-storage] traits.
+- [`esp-storage`][esp-storage] provides [`FlashStorage`][flash-storage], a driver for the SPI flash chip.
 - [`esp-bootloader-esp-idf`][esp-bootloader-esp-idf] has been part of the project from the start, because `esp_app_desc!()` creates the application descriptor that the ESP-IDF bootloader expects. It also understands the partition table and `otadata`.
 
 At startup, `main` creates the flash driver, reads the partition table, and logs which partition is running:
@@ -120,13 +120,7 @@ At startup, `main` creates the flash driver, reads the partition table, and logs
 
 [`read_partition_table`][read-partition-table] parses the table into the buffer, and [`booted_partition`][partition-table] reports the partition the running code was loaded from. This log line is how we will tell whether the device is running from `factory`, `ota_0`, or `ota_1`.
 
-The flash driver is created once in `main`, but the OTA task uses it much later. We move it into a static:
-
-```rust,ignore
-{{#include ../../project/part5/src/ota.rs:flash_storage_static}}
-```
-
-The [`embassy-sync` `Mutex`][embassy-mutex] guarantees that only one task accesses the flash at a time. The value is wrapped in an `Option` because a static must be initialized at compile time, while `FlashStorage` can only be created at runtime from the `FLASH` peripheral. `main` stores `Some(flash)` after initialization, and the OTA task locks the mutex when it needs to write.
+The flash driver is created once in `main`, but only the OTA task writes to the flash. `main` therefore moves the driver into that task when it spawns it, as shown in the next section. From then on the OTA task owns the flash, and no other code can access it.
 
 ## Creating the Application Image
 
@@ -195,7 +189,7 @@ On the device, the OTA logic lives in `project/part5/src/ota.rs`. `main` spawns 
 {{#shiftinclude auto:../../project/part5/src/main.rs:spawn_ota}}
 ```
 
-The task receives the station stack, because the OTA server is reachable through the network the device joins after provisioning. Its first step is `stack.wait_config_up()`, so like `mqtt_task`, it waits until provisioning is complete and DHCP has configured the station.
+The task receives the station stack, because the OTA server is reachable through the network the device joins after provisioning, and the flash driver. Before each check, it calls `stack.wait_config_up()`, so like `mqtt_task`, it waits until provisioning is complete and DHCP has configured the station.
 
 ### Checking Periodically
 
@@ -207,7 +201,11 @@ The device does not know when a new image is available, so it asks at a fixed in
 
 The default is 300 seconds. Set `OTA_CHECK_INTERVAL_SECS` when building to check more often, which is convenient while testing. Values that are missing, zero, or not a number fall back to the default.
 
-The OTA server address comes from the same `HOST_IP` variable as the MQTT broker, since both servers run on your computer. Unlike the MQTT task, the OTA task does not resolve hostnames: `HOST_IP` must be an IPv4 address. If it is missing or not an address, the task skips the check and tries again after the interval.
+The OTA server address comes from the same `HOST_IP` variable as the MQTT broker, since both servers run on your computer. Unlike the MQTT task, the OTA task does not resolve hostnames: `HOST_IP` must be an IPv4 address. If it is missing or not an address, the task logs an error and ends, which disables OTA updates:
+
+```rust,ignore
+{{#shiftinclude auto:../../project/part5/src/ota.rs:ota_host}}
+```
 
 ### Requesting the Image
 
@@ -246,7 +244,7 @@ The server offers the same image at every check, so the device must decide wheth
 {{#include ../../project/part5/src/ota.rs:image_layout}}
 ```
 
-The task reads the first 80 bytes of the body, which end exactly after the version field, and compares the version with the one of the running firmware:
+The task reads the first 80 bytes of the body, which end exactly after the version field, into a sector-sized buffer that we will reuse to write the image. It then compares the version with the one of the running firmware:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part5/src/ota.rs:check_version}}
@@ -267,7 +265,7 @@ The comparison only checks whether the versions differ. A server that offers an 
 
 ### Writing the Image to Flash
 
-Once the image is known to be new, the task locks `FLASH_STORAGE` and creates an [`OtaUpdater`][ota-updater]:
+Once the image is known to be new, the task creates an [`OtaUpdater`][ota-updater] from the flash driver:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part5/src/ota.rs:ota_updater}}
@@ -275,7 +273,7 @@ Once the image is known to be new, the task locks `FLASH_STORAGE` and creates an
 
 `OtaUpdater::new` reads the partition table again and checks that it contains an `otadata` partition and at least two OTA slots. With the default `espflash` partition table, this step fails.
 
-[`next_partition`][ota-updater] decides which slot receives the update. It reads `otadata` to find the currently selected slot and picks the following one: `ota_0` after `factory`, `ota_1` after `ota_0`, and `ota_0` again after `ota_1`. It never returns the slot the application is running from. The returned [`FlashRegion`][flash-region] covers only that partition, with offsets relative to its start, so the task cannot write to the running application, the bootloader, or any other partition by mistake.
+[`next_partition`][ota-updater] decides which slot receives the update. It reads `otadata` to find the currently selected slot and picks the following one: `ota_0` after `factory`, `ota_1` after `ota_0`, and `ota_0` again after `ota_1`. It never returns the slot the application is running from. The returned [`FlashRegion`][flash-region] covers only that partition, with offsets relative to its start, so the task cannot write to the running application, the bootloader, or any other partition by mistake. If `Content-Length` announces an image larger than the slot, the task stops before writing anything.
 
 The task then writes the image in the order it arrives:
 
@@ -283,7 +281,9 @@ The task then writes the image in the order it arrives:
 {{#shiftinclude auto:../../project/part5/src/ota.rs:write_firmware}}
 ```
 
-First, the 80 bytes already read for the version check are written at offset `0`. Then, each chunk of up to 4 KiB from the body is written right after the previous one. The body reader stops at `Content-Length`, and a read that returns `0` bytes ends the loop.
+Flash can only change bits from `1` to `0`, so it must be erased before it is written, and it is erased in 4 KiB sectors. [`FlashRegion::write`][flash-region] handles this: it erases each sector it touches and preserves the parts of the sector it does not overwrite. Network reads return arbitrary amounts of data, though, often less than a TCP segment. Writing each read directly would erase most sectors several times, which is slow and wears out the flash.
+
+The task therefore fills the sector buffer, which already holds the 80 bytes read for the version check, and writes it once it is full. Each write starts at a sector boundary and covers a whole sector, so each sector is erased exactly once. The body reader stops at `Content-Length`, and a read that returns `0` bytes writes the remaining bytes and ends the loop.
 
 A read also returns `0` bytes when the server closes the connection early, so the end of the loop does not prove that the image is complete. The task compares the number of written bytes with `Content-Length` and refuses a partial image:
 
@@ -291,7 +291,7 @@ A read also returns `0` bytes when the server closes the connection early, so th
 ERROR - HTTP Client: Download incomplete (359040 of 718080 bytes)
 ```
 
-The image is never held in RAM as a whole. With roughly 700 KB of firmware and about 100 KB of heap, it could not be. Flash can only change bits from `1` to `0`, so it must be erased before it is written. The `write` method of the [`Storage`][embedded-storage-storage] trait handles this: it erases each 4 KiB sector as needed and preserves the parts of the sector it does not overwrite.
+The image is never held in RAM as a whole. With roughly 700 KB of firmware and about 100 KB of heap, it could not be.
 
 ### Activating the New Image
 
@@ -325,10 +325,10 @@ The ESP32-C3-DevKit-RUST-2 has an addressable RGB LED connected to GPIO2. `statu
 | Color | State          | Set by                                                     |
 | ----- | -------------- | ---------------------------------------------------------- |
 | Green | `Provisioning` | `main`, while the provisioning portal is running.          |
-| Off   | `Idle`         | The OTA task, once the station is connected and between checks. |
+| Off   | `Idle`         | The OTA task, between checks.                              |
 | Blue  | `Updating`     | The OTA task, while it contacts the server and downloads.  |
 
-A `Signal` only keeps the most recent value, which is exactly what a status indicator needs: the LED task does not care about states it missed, only about the current one.
+As with the Wi-Fi credentials, a `Signal` only keeps the most recent value, which is exactly what a status indicator needs: the LED task does not care about states it missed, only about the current one.
 
 ## Running the Application
 
@@ -356,13 +356,13 @@ INFO - Currently booted partition Ok(Some(PartitionEntry { magic: 20650, raw_typ
 
 The provisioning portal instructions from the previous chapter follow, and the LED turns green.
 
-Provision the device as described in [Wi-Fi Provisioning](./wifi-provisioning.md#running-the-application). Once the station is connected, the LED turns off, the MQTT task publishes measurements, and the OTA task starts its checks:
+The OTA task logs its check interval:
 
 ```text
 INFO - HTTP Client: Periodic OTA checks enabled (every 30s)
 ```
 
-No OTA server is running yet, so every check logs a connection error and the old firmware keeps running.
+Provision the device as described in [Wi-Fi Provisioning](./wifi-provisioning.md#running-the-application). Once the station is connected, the MQTT task publishes measurements, and the OTA task starts its checks. The LED turns blue during each check and off between checks. No OTA server is running yet, so every check logs a connection error and the old firmware keeps running.
 
 ### Building the Update
 
@@ -413,7 +413,7 @@ The OTA server keeps offering the same image, but the device now runs that versi
 INFO - HTTP Client: Firmware 0.2.0 is up to date
 ```
 
-Each of these checks closes the connection after the first bytes of the image, so the server prints `failed to write HTTP response body: Broken pipe` after `Serving firmware.bin`. This is expected.
+Each of these checks closes the connection after the first bytes of the image, so the server prints `failed to write HTTP response body` with `Broken pipe` or `Connection reset by peer` after `Serving firmware.bin`. This is expected.
 
 To return to the original firmware, flash it again over USB with `--erase-data-parts ota`, as in the first step.
 
@@ -435,18 +435,15 @@ With OTA updates in place, a device in the field can receive new firmware withou
 [idf-app-image]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/system/app_image_format.html
 [idf-secure-boot]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/security/secure-boot-v2.html
 [idf-app-rollback]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/system/ota.html#app-rollback
-[esp-storage]: https://docs.espressif.com/projects/rust/esp-storage/0.9.0/esp32c3/esp_storage/
-[flash-storage]: https://docs.espressif.com/projects/rust/esp-storage/0.9.0/esp32c3/esp_storage/struct.FlashStorage.html
-[esp-bootloader-esp-idf]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.5.0/esp32c3/esp_bootloader_esp_idf/
-[read-partition-table]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.5.0/esp32c3/esp_bootloader_esp_idf/partitions/fn.read_partition_table.html
-[partition-table]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.5.0/esp32c3/esp_bootloader_esp_idf/partitions/struct.PartitionTable.html
-[flash-region]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.5.0/esp32c3/esp_bootloader_esp_idf/partitions/struct.FlashRegion.html
-[ota-updater]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.5.0/esp32c3/esp_bootloader_esp_idf/ota_updater/struct.OtaUpdater.html
-[ota-image-state]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.5.0/esp32c3/esp_bootloader_esp_idf/ota/enum.OtaImageState.html
-[software-reset]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/system/fn.software_reset.html
-[embedded-storage]: https://docs.rs/embedded-storage/0.3.1/embedded_storage/
-[embedded-storage-storage]: https://docs.rs/embedded-storage/0.3.1/embedded_storage/trait.Storage.html
-[embassy-mutex]: https://docs.rs/embassy-sync/0.8.0/embassy_sync/mutex/struct.Mutex.html
+[esp-storage]: https://docs.espressif.com/projects/rust/esp-storage/0.10.0/esp32c3/esp_storage/
+[flash-storage]: https://docs.espressif.com/projects/rust/esp-storage/0.10.0/esp32c3/esp_storage/struct.FlashStorage.html
+[esp-bootloader-esp-idf]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.6.0/esp32c3/esp_bootloader_esp_idf/
+[read-partition-table]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.6.0/esp32c3/esp_bootloader_esp_idf/partitions/fn.read_partition_table.html
+[partition-table]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.6.0/esp32c3/esp_bootloader_esp_idf/partitions/struct.PartitionTable.html
+[flash-region]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.6.0/esp32c3/esp_bootloader_esp_idf/partitions/struct.FlashRegion.html
+[ota-updater]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.6.0/esp32c3/esp_bootloader_esp_idf/ota_updater/struct.OtaUpdater.html
+[ota-image-state]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.6.0/esp32c3/esp_bootloader_esp_idf/ota/enum.OtaImageState.html
+[software-reset]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/system/fn.software_reset.html
 [embassy-signal]: https://docs.rs/embassy-sync/0.8.0/embassy_sync/signal/struct.Signal.html
 [edge-http-client]: https://docs.rs/edge-http/0.8.0/edge_http/io/client/enum.Connection.html
 [edge-nal-embassy]: https://docs.rs/edge-nal-embassy/0.9.0/edge_nal_embassy/

@@ -66,12 +66,11 @@
         <div class='info'>
             <p class='status'>+ Connected to ESP32-C3 Access Point</p>
             <p>Device: <strong>esp-radio</strong></p>
-            <p>IP Address: <strong>192.168.2.1</strong></p>
         </div>
         <h2>Configure WiFi</h2>
         <form id='wifi-form'>
-            <input type='text' id='ssid' placeholder='WiFi SSID' required>
-            <input type='password' id='password' placeholder='WiFi Password' required>
+            <input type='text' id='ssid' placeholder='WiFi SSID' maxlength='32' required>
+            <input type='password' id='password' placeholder='WiFi Password' minlength='8' maxlength='64' required>
             <button type='submit'>Save Configuration</button>
         </form>
         <script>

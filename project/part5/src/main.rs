@@ -33,128 +33,91 @@ mod sensor;
 mod status_led;
 
 use core::net::Ipv4Addr;
-use core::str::FromStr;
 
-const GW_IP_ADDR_ENV: Option<&'static str> = option_env!("GATEWAY_IP");
 use embassy_executor::Spawner;
-use embassy_sync::channel::Channel;
-use embassy_time::{Duration as EmbassyDuration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
+use esp_bootloader_esp_idf::partitions;
 use esp_hal::{
+    clock::CpuClock,
     i2c::master::{Config, I2c},
-    interrupt::software::SoftwareInterruptControl,
     ram,
     timer::timg::TimerGroup,
 };
-use log::{debug, info};
-
-use crate::http::{run_captive_portal, run_dhcp, run_http_server};
-use crate::mqtt::mqtt_task;
-use crate::network::{
-    NetworkStacks, WifiCredentials, connection, create_network_stacks, net_task, sta_net_task,
-};
-use crate::ota::{FLASH_STORAGE, http_client_task};
-use crate::status_led::{LED_STATUS, LedStatus, status_led_task};
+use esp_radio::wifi::WifiController;
+use esp_storage::FlashStorage;
+use log::info;
 use shtcx2::asynchronous::shtc3;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+use crate::http::{run_captive_portal, run_dhcp, run_http_server};
+use crate::mqtt::mqtt_task;
+use crate::network::{NetworkStacks, connection, create_network_stacks, net_task};
+use crate::ota::http_client_task;
+use crate::status_led::{LED_STATUS, LedStatus, status_led_task};
+
+const GATEWAY_IP: Option<&str> = option_env!("GATEWAY_IP");
+
 #[esp_rtos::main]
-async fn main(spawner: Spawner) -> ! {
+async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
-    let config = esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max());
+    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
     // ANCHOR: flash_storage
-    let mut flash = esp_storage::FlashStorage::new(peripherals.FLASH);
-    let mut buffer = [0u8; esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN];
-    let pt = esp_bootloader_esp_idf::partitions::read_partition_table(&mut flash, &mut buffer)
+    let mut flash = FlashStorage::new(peripherals.FLASH);
+    let mut buffer = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
+    let pt = partitions::read_partition_table(&mut flash, &mut buffer)
         .expect("Failed to read partition table");
     info!("Currently booted partition {:?}", pt.booted_partition());
-
-    // Store flash storage in mutex for OTA updates
-    *FLASH_STORAGE.lock().await = Some(flash);
     // ANCHOR_END: flash_storage
 
     esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
     esp_alloc::heap_allocator!(size: 36 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
-    // Initialize I2C and sensor
-    let sda = peripherals.GPIO10;
-    let scl = peripherals.GPIO8;
     let i2c = I2c::new(peripherals.I2C0, Config::default())
         .expect("Failed to create I2C bus")
-        .with_sda(sda)
-        .with_scl(scl)
+        .with_sda(peripherals.GPIO10)
+        .with_scl(peripherals.GPIO8)
         .into_async();
     let sht = shtc3(i2c);
 
     LED_STATUS.signal(LedStatus::Provisioning);
 
-    // Initialize WiFi radio
-    let (controller, interfaces) = esp_radio::wifi::new(peripherals.WIFI, Default::default())
-        .expect("Failed to create WiFi controller");
+    let controller = WifiController::new(peripherals.WIFI, Default::default())
+        .expect("Failed to create Wi-Fi controller");
 
-    let ap_device = interfaces.access_point;
-    let sta_device = interfaces.station;
-
-    // Setup network stacks
-    let gw_ip_addr_str = GW_IP_ADDR_ENV.unwrap_or("192.168.2.1");
-    let gw_ip_addr = Ipv4Addr::from_str(gw_ip_addr_str).expect("failed to parse gateway ip");
+    let gw_ip_addr: Ipv4Addr = GATEWAY_IP
+        .unwrap_or("192.168.2.1")
+        .parse()
+        .expect("GATEWAY_IP is not an IPv4 address");
 
     let NetworkStacks {
         ap_stack,
         ap_runner,
         sta_stack,
         sta_runner,
-    } = create_network_stacks(ap_device, sta_device, gw_ip_addr);
+    } = create_network_stacks(gw_ip_addr);
 
-    // Create WiFi credentials channel
-    static WIFI_CREDENTIALS_CHANNEL_CELL: static_cell::StaticCell<
-        Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, WifiCredentials, 1>,
-    > = static_cell::StaticCell::new();
-    let wifi_credentials_channel = WIFI_CREDENTIALS_CHANNEL_CELL.uninit().write(Channel::new());
-
-    // Spawn all tasks
-    spawner.spawn(
-        connection(controller, wifi_credentials_channel).expect("failed to spawn connection task"),
-    );
+    spawner.spawn(connection(controller).expect("failed to spawn connection task"));
     spawner.spawn(net_task(ap_runner).expect("failed to spawn AP network task"));
-    spawner.spawn(sta_net_task(sta_runner).expect("failed to spawn STA network task"));
+    spawner.spawn(net_task(sta_runner).expect("failed to spawn STA network task"));
     spawner.spawn(run_dhcp(ap_stack, gw_ip_addr).expect("failed to spawn DHCP task"));
     spawner.spawn(
         run_captive_portal(ap_stack, gw_ip_addr).expect("failed to spawn captive portal task"),
     );
+    spawner.spawn(run_http_server(ap_stack, gw_ip_addr).expect("failed to spawn HTTP task"));
     spawner.spawn(mqtt_task(sta_stack, sht).expect("failed to spawn MQTT task"));
     // ANCHOR: spawn_ota
-    spawner.spawn(http_client_task(sta_stack).expect("failed to spawn OTA HTTP client task"));
+    spawner.spawn(http_client_task(sta_stack, flash).expect("failed to spawn OTA task"));
     spawner.spawn(
         status_led_task(peripherals.RMT, peripherals.GPIO2).expect("failed to spawn LED task"),
     );
     // ANCHOR_END: spawn_ota
 
-    // Wait for AP link to come up
-    ap_stack.wait_link_up().await;
-    info!("WiFi Provisioning Portal Ready");
-    info!("1. Connect to the AP: `esp-radio`");
-    info!("2. Navigate to: http://{gw_ip_addr_str}/");
-    ap_stack.wait_config_up().await;
-    ap_stack
-        .config_v4()
-        .inspect(|c| debug!("ipv4 config: {c:?}"));
-
-    spawner.spawn(
-        run_http_server(ap_stack, wifi_credentials_channel)
-            .expect("failed to spawn HTTP server task"),
-    );
-
-    // Keep main task alive
-    loop {
-        Timer::after(EmbassyDuration::from_secs(60)).await;
-    }
+    info!("Provisioning portal: join the `esp-radio` network and open http://{gw_ip_addr}/");
 }

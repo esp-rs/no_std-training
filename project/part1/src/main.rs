@@ -11,7 +11,7 @@
 #![deny(clippy::large_stack_frames)]
 
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Delay, Duration, Timer};
 // ANCHOR: backtrace_import
 use esp_backtrace as _;
 // ANCHOR_END: backtrace_import
@@ -21,7 +21,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use log::{error, info};
-use shtcx2::asynchronous::{PowerMode, max_measurement_duration, shtc3};
+use shtcx2::asynchronous::{PowerMode, shtc3};
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/system/app_image_format.html#application-description>
@@ -40,9 +40,7 @@ async fn main(_spawner: Spawner) -> ! {
 
     // ANCHOR: esp_rtos_start
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let sw_interrupt =
-        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
     // ANCHOR_END: esp_rtos_start
 
     // ANCHOR: i2c_driver
@@ -58,32 +56,17 @@ async fn main(_spawner: Spawner) -> ! {
 
     loop {
         // ANCHOR: read_measurement
-        // Read sensor
-        if let Err(e) = sht.start_measurement(PowerMode::NormalMode).await {
-            error!("Failed to start measurement: {:?}", e);
-            Timer::after(Duration::from_secs(1)).await;
-            continue;
+        match sht.measure(PowerMode::NormalMode, &mut Delay).await {
+            // ANCHOR: log_measurement
+            Ok(measurement) => info!(
+                "  {:.2} °C | {:.2} %RH",
+                measurement.temperature.as_degrees_celsius(),
+                measurement.humidity.as_percent(),
+            ),
+            // ANCHOR_END: log_measurement
+            Err(e) => error!("Failed to read sensor: {e:?}"),
         }
-        // Wait for the maximum measurement duration reported by the sensor driver.
-        let duration = max_measurement_duration(&sht, PowerMode::NormalMode);
-        Timer::after(Duration::from_micros(duration.into())).await;
-        let measurement = match sht.get_measurement_result().await {
-            Ok(m) => m,
-            Err(e) => {
-                error!("Failed to get measurement result: {:?}", e);
-                Timer::after(Duration::from_secs(1)).await;
-                continue;
-            }
-        };
         // ANCHOR_END: read_measurement
-
-        // ANCHOR: log_measurement
-        info!(
-            "  {:.2} °C | {:.2} %RH",
-            measurement.temperature.as_degrees_celsius(),
-            measurement.humidity.as_percent(),
-        );
-        // ANCHOR_END: log_measurement
         Timer::after(Duration::from_secs(1)).await;
     }
 }

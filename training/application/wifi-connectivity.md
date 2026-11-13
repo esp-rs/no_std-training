@@ -28,9 +28,13 @@ This split keeps the new networking concepts easier to read, and the same module
 
 A `no_std` program has no global allocator unless we provide one. The previous chapter never needed a heap: the sensor driver works with stack buffers, and we never built a `String` or a `Vec`.
 
-Wi-Fi is different. [`esp-radio`][esp-radio] wraps the precompiled radio driver, and that driver allocates at runtime. [`embassy-net`][embassy-net] and our HTTP helper also need the [`alloc`][alloc] crate, for example when `format!` builds the JSON body. Without a heap, the application would not even start the radio.
+Wi-Fi is different. [`esp-radio`][esp-radio] wraps the precompiled radio driver, and that driver allocates at runtime. Without a heap, the application would not even start the radio. Our HTTP helper also uses the [`alloc`][alloc] crate, because `format!` builds the request in a heap-allocated `String`.
 
-We therefore add [`esp-alloc`][esp-alloc] and enable the `alloc` crate:
+We therefore add [`esp-alloc`][esp-alloc], with the `esp32c3` feature, and enable the `alloc` crate:
+
+```toml
+{{#include ../../project/part2/Cargo.toml:esp_alloc}}
+```
 
 ```rust,ignore
 {{#include ../../project/part2/src/main.rs:alloc_crate}}
@@ -55,7 +59,7 @@ Then we create the heap before starting the scheduler or the radio:
 
 See [Allocating Memory][alloc-book] in *The Rust on ESP Book* for more details.
 
-> `esp-radio` requires both a heap and a running scheduler. We still call `esp_rtos::start(...)` before `esp_radio::wifi::new(...)`, just as the crate documentation requires.
+> `esp-radio` requires both a heap and a running scheduler, so we call `esp_rtos::start(...)` before creating the Wi-Fi controller.
 
 ## Initializing the Network Stack
 
@@ -63,13 +67,13 @@ Networking is split into two layers. [`esp-radio`][esp-radio] drives the Wi-Fi h
 
 ### Creating the Wi-Fi Interface
 
-After the scheduler is running, we take ownership of the Wi-Fi peripheral and create a station-mode interface:
+After the scheduler is running, we take ownership of the Wi-Fi peripheral and create a station interface:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part2/src/main.rs:wifi_controller}}
 ```
 
-[`esp_radio::wifi::new`][wifi-new] returns a [`WifiController`][wifi-controller] and a set of interfaces. The controller associates with an access point. `interfaces.station` is the embassy-net driver: a Wi-Fi client that can send and receive Ethernet frames.
+[`WifiController::new`][wifi-controller] initializes the Wi-Fi driver. The controller configures the radio and associates with an access point. [`Interface::station()`][wifi-interface] is the `embassy-net` driver: a Wi-Fi client that can send and receive Ethernet frames. There is only one station interface, so creating a second one would panic.
 
 ### `embassy-net` Configuration
 
@@ -86,7 +90,7 @@ The crate features select which protocols are compiled in:
 - `udp` is used by DHCP and DNS.
 - `tcp` and `dns` are used later when we open a socket and resolve a host.
 
-We also enable Embassy support in `esp-rtos`, and the `wifi` feature on `esp-radio`:
+We also enable the `wifi` feature on `esp-radio`, and the `esp-radio` and `esp-alloc` integrations of `esp-rtos`, which let the radio driver use the scheduler and the heap:
 
 ```toml
 {{#include ../../project/part2/Cargo.toml:esp_radio}}
@@ -130,7 +134,7 @@ The stack is not useful until two loops run in the background:
 
 Both functions are Embassy tasks, created with [`#[embassy_executor::task]`][embassy-task].
 
-`connection` owns the `WifiController`. It configures station mode, connects, and if the link drops it waits and tries again:
+`connection` owns the `WifiController`. It configures the station with the network credentials, connects, and if the connection fails or drops it waits five seconds and tries again:
 
 ```rust,ignore
 {{#include ../../project/part2/src/network.rs:connection_task}}
@@ -154,7 +158,7 @@ The network name and password are not written as string literals. They are read 
 {{#include ../../project/part2/src/network.rs:wifi_env}}
 ```
 
-[`env!`][env-macro] expands to a `&'static str` taken from the environment when `rustc` runs. If `SSID` or `PASSWORD` is missing, the build fails. That keeps credentials out of the source tree, and it means you pass them when you build or flash:
+[`env!`][env-macro] expands to a `&'static str` taken from the environment when `rustc` runs. The `connection` task converts the strings into the `Ssid` and `Password` types of `esp-radio`, which reject values longer than 32 and 64 bytes, and uses WPA2 as the minimum authentication method. If `SSID` or `PASSWORD` is missing, the build fails. That keeps credentials out of the source tree, and it means you pass them when you build or flash:
 
 ```shell
 SSID="your-ssid" PASSWORD="your-password" cargo run --release
@@ -168,17 +172,17 @@ The HTTP helper uses optional variables for the receiver on your computer:
 {{#include ../../project/part2/src/http.rs:http_env}}
 ```
 
-[`option_env!`][option-env-macro] yields `None` when the variable is unset, so the firmware still builds. At runtime, `send_sensor_data` logs an error and returns if `HOST_IP` is missing. `HTTP_PORT` defaults to `8080`.
+[`option_env!`][option-env-macro] yields `None` when the variable is unset, so the firmware still builds. At runtime, `send_sensor_data` logs an error and returns if `HOST_IP` is missing. `HTTP_PORT` defaults to `8080`. Despite its name, `HOST_IP` can also contain a hostname, which is resolved with DNS.
 
 ## Waiting for an Address, Then Sending Data
 
-After the tasks are spawned, `main` waits until the link is up and DHCP has assigned an address:
+After the tasks are spawned, `main` waits until DHCP has assigned an address:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part2/src/main.rs:wait_ip}}
 ```
 
-`wait_link_up()` completes when the station is associated. The following loop waits until `config_v4()` is `Some`, which means the DHCP lease is in place. Only then do we start sending.
+`wait_config_up()` completes once the station is associated and the DHCP lease is in place. Only then do we start sending.
 
 The application loop is now two calls: read the sensor, and if that succeeds, post the values:
 
@@ -186,7 +190,7 @@ The application loop is now two calls: read the sensor, and if that succeeds, po
 {{#shiftinclude auto:../../project/part2/src/main.rs:main_loop}}
 ```
 
-`send_sensor_data` formats a small JSON body, opens a TCP socket, and writes a hand-built HTTP/1.0 `POST` to `/sensor`:
+`send_sensor_data` formats a small JSON body, opens a TCP socket, and writes a hand-built HTTP/1.0 `POST` to `/sensor`. It logs failures itself, so the loop simply moves on to the next reading:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part2/src/http.rs:http_payload}}
@@ -213,7 +217,7 @@ Replace the SSID, password, and IP with your network and the address printed by 
 Once the device associates, you should see a connection log on the serial monitor:
 
 ```text
-INFO - Wifi connected!
+INFO - Wi-Fi connected!
 INFO -   24.31 °C | 42.18 %RH
 INFO - HTTP request sent
 ```
@@ -226,13 +230,13 @@ sensor payload={"temperature":24.31,"humidity":42.18}
 
 At this point the board can join a Wi-Fi network, obtain an IP address, and send measurements off-device. In the next chapter we will publish those readings to an MQTT broker.
 
-[esp-radio]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/index.html
-[esp-alloc]: https://docs.espressif.com/projects/rust/esp-alloc/0.10.0/esp_alloc/index.html
-[heap-allocator]: https://docs.espressif.com/projects/rust/esp-alloc/0.10.0/esp_alloc/macro.heap_allocator.html
+[esp-radio]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/index.html
+[esp-alloc]: https://docs.espressif.com/projects/rust/esp-alloc/0.11.0/esp_alloc/index.html
+[heap-allocator]: https://docs.espressif.com/projects/rust/esp-alloc/0.11.0/esp_alloc/macro.heap_allocator.html
 [alloc-book]: https://docs.espressif.com/projects/rust/book/application-development/alloc.html
 [alloc]: https://doc.rust-lang.org/alloc/
-[wifi-new]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/fn.new.html
-[wifi-controller]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/struct.WifiController.html
+[wifi-controller]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/wifi/struct.WifiController.html#method.new
+[wifi-interface]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/wifi/struct.Interface.html
 [embassy-net]: https://docs.rs/embassy-net/0.9.1/embassy_net/
 [embassy-net-new]: https://docs.rs/embassy-net/0.9.1/embassy_net/fn.new.html
 [embassy-net-config]: https://docs.rs/embassy-net/0.9.1/embassy_net/struct.Config.html#method.dhcpv4

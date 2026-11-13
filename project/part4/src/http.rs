@@ -1,7 +1,6 @@
-use core::fmt::Debug;
-use core::net::{Ipv4Addr, SocketAddr};
+use core::fmt::{Debug, Display, Write as _};
+use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use core::time::Duration;
-use edge_captive::io::run;
 use edge_dhcp::{
     io::{self, DEFAULT_SERVER_PORT},
     server::{Server, ServerOptions},
@@ -11,12 +10,11 @@ use edge_http::{Method, io::Error as HttpError};
 use edge_nal::{TcpBind, UdpBind};
 use edge_nal_embassy::{Tcp, TcpBuffers, Udp, UdpBuffers};
 use embassy_net::Stack;
-use embassy_sync::channel::Channel;
-use embassy_time::{Duration as EmbassyDuration, Timer};
+use embassy_time::Timer;
 use embedded_io_async::{Read, Write};
-use log::{debug, error, info};
+use log::{info, warn};
 
-use crate::network::WifiCredentials;
+use crate::network::{WIFI_CREDENTIALS, WifiCredentials};
 
 // ANCHOR: templates
 // HTML templates embedded at compile time
@@ -30,13 +28,11 @@ const SAVED_HTML: &str = include_str!(concat!(
 ));
 // ANCHOR_END: templates
 
-// HTTP Handler implementation
+const HTML_HEADERS: &[(&str, &str)] = &[("Content-Type", "text/html; charset=utf-8")];
+
 struct HttpHandler {
-    wifi_credentials_channel: &'static Channel<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        WifiCredentials,
-        1,
-    >,
+    /// Absolute URL of the provisioning page, e.g. `http://192.168.2.1/`.
+    portal_url: heapless::String<32>,
 }
 
 impl Handler for HttpHandler {
@@ -47,103 +43,65 @@ impl Handler for HttpHandler {
 
     async fn handle<T, const N: usize>(
         &self,
-        _task_id: impl core::fmt::Display + Copy,
+        _task_id: impl Display + Copy,
         conn: &mut Connection<'_, T, N>,
     ) -> Result<(), Self::Error<T::Error>>
     where
         T: Read + Write,
     {
         let headers = conn.headers()?;
-        let method = headers.method;
-        let path = headers.path;
-
-        debug!(
-            "HTTP: {} {}",
-            match method {
-                Method::Get => "GET",
-                Method::Post => "POST",
-                _ => "OTHER",
-            },
-            path
-        );
-
-        // ANCHOR: captive_paths
-        // Handle captive portal redirects
-        const CAPTIVE_PATHS: &[&str] =
-            &["/generate_204", "/gen_204", "/ncsi.txt", "/connecttest.txt"];
-        if CAPTIVE_PATHS.contains(&path) {
-            conn.initiate_response(302, Some("Found"), &[("Location", "/")])
-                .await?;
-            return Ok(());
-        }
-        // ANCHOR_END: captive_paths
-
-        // Handle routes
-        match (method, path) {
+        match (headers.method, headers.path) {
             // ANCHOR: home_route
             (Method::Get, "/") => {
-                conn.initiate_response(
-                    200,
-                    Some("OK"),
-                    &[("Content-Type", "text/html; charset=utf-8")],
-                )
-                .await?;
+                conn.initiate_response(200, Some("OK"), HTML_HEADERS)
+                    .await?;
                 conn.write_all(HOME_HTML.as_bytes()).await?;
             }
             // ANCHOR_END: home_route
             (Method::Get, "/saved") => {
-                conn.initiate_response(
-                    200,
-                    Some("OK"),
-                    &[("Content-Type", "text/html; charset=utf-8")],
-                )
-                .await?;
+                conn.initiate_response(200, Some("OK"), HTML_HEADERS)
+                    .await?;
                 conn.write_all(SAVED_HTML.as_bytes()).await?;
             }
             // ANCHOR: save_route
             (Method::Post, "/save") => {
-                // Read request body
-                let mut buf = [0u8; 256];
-                let n = match conn.read(&mut buf).await {
-                    Ok(0) => {
+                let mut body = [0u8; 256];
+                let mut len = 0;
+                while len < body.len() {
+                    match conn.read(&mut body[len..]).await? {
+                        0 => break,
+                        n => len += n,
+                    }
+                }
+
+                match serde_json_core::from_slice::<WifiCredentials>(&body[..len]) {
+                    // WPA2 passwords have between 8 and 64 characters. The Wi-Fi driver does not
+                    // reject shorter ones, it only fails to connect.
+                    Ok((credentials, _)) if credentials.password.len() >= 8 => {
+                        WIFI_CREDENTIALS.signal(credentials);
+                        conn.initiate_response(200, Some("OK"), &[]).await?;
+                    }
+                    Ok(_) => {
+                        warn!("Rejected credentials: the password is shorter than 8 characters");
                         conn.initiate_response(400, Some("Bad Request"), &[])
                             .await?;
-                        return Ok(());
                     }
-                    Ok(n) => n,
-                    Err(e) => return Err(e),
-                };
-
-                match serde_json_core::from_slice::<WifiCredentials>(&buf[..n])
-                    .ok()
-                    .map(|(credentials, _)| credentials)
-                {
-                    Some(credentials) => {
-                        debug!(
-                            "WiFi Credentials Received: SSID: {} | Password: {}",
-                            credentials.ssid, credentials.password
-                        );
-                        self.wifi_credentials_channel
-                            .sender()
-                            .send(credentials)
-                            .await;
-                        debug!("Credentials sent!");
-
-                        conn.initiate_response(
-                            200,
-                            Some("OK"),
-                            &[("Content-Type", "text/html; charset=utf-8")],
-                        )
-                        .await?;
-                        conn.write_all(SAVED_HTML.as_bytes()).await?;
-                    }
-                    None => {
+                    Err(e) => {
+                        warn!("Invalid credentials request: {e:?}");
                         conn.initiate_response(400, Some("Bad Request"), &[])
                             .await?;
                     }
                 }
             }
             // ANCHOR_END: save_route
+            // ANCHOR: captive_redirect
+            // Operating systems probe URLs such as `/generate_204` to detect captive portals.
+            // Redirecting every unknown page makes them open the provisioning page.
+            (Method::Get, _) => {
+                conn.initiate_response(302, Some("Found"), &[("Location", &self.portal_url)])
+                    .await?;
+            }
+            // ANCHOR_END: captive_redirect
             _ => {
                 conn.initiate_response(404, Some("Not Found"), &[]).await?;
             }
@@ -154,101 +112,82 @@ impl Handler for HttpHandler {
 }
 
 #[embassy_executor::task]
-pub async fn run_http_server(
-    stack: Stack<'static>,
-    wifi_credentials_channel: &'static Channel<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        WifiCredentials,
-        1,
-    >,
-) {
+pub async fn run_http_server(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
     const HTTP_PORT: u16 = 80;
-    info!("Starting HTTP server on port {HTTP_PORT}");
 
     // ANCHOR: http_server
-    static TCP_BUFFERS: static_cell::StaticCell<TcpBuffers<1, 2048, 2048>> =
-        static_cell::StaticCell::new();
-    let buffers = TCP_BUFFERS.uninit().write(TcpBuffers::new());
-
-    let tcp = Tcp::new(stack, buffers);
+    let buffers = TcpBuffers::<1, 2048, 2048>::new();
+    let tcp = Tcp::new(stack, &buffers);
     let mut acceptor = tcp
-        .bind(SocketAddr::new(
-            core::net::IpAddr::V4(core::net::Ipv4Addr::UNSPECIFIED),
+        .bind(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::UNSPECIFIED,
             HTTP_PORT,
-        ))
+        )))
         .await
-        .expect("Failed to bind TCP socket");
+        .expect("Failed to bind the HTTP server");
 
-    let handler = HttpHandler {
-        wifi_credentials_channel,
-    };
+    let mut portal_url = heapless::String::new();
+    write!(portal_url, "http://{gw_ip_addr}/").unwrap();
+    let handler = HttpHandler { portal_url };
 
     let mut server = HttpServer::<1, 2048, 32>::new();
+    info!("HTTP server listening on port {HTTP_PORT}");
 
     loop {
-        if let Err(_e) = server
-            .run(Some(50000), &mut acceptor, &handler)
-            .await
-            .inspect_err(|e| error!("HTTP server error: {:?}", e))
-        {
-            Timer::after(EmbassyDuration::from_millis(100)).await;
+        if let Err(e) = server.run(Some(50_000), &mut acceptor, &handler).await {
+            warn!("HTTP server error: {e:?}");
         }
+        Timer::after_millis(100).await;
     }
     // ANCHOR_END: http_server
 }
 
 #[embassy_executor::task]
 pub async fn run_dhcp(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
-    use core::net::{Ipv4Addr, SocketAddrV4};
-
     let mut buf = [0u8; 1500];
-    let mut gw_buf = [Ipv4Addr::UNSPECIFIED];
 
-    let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
-    let unbound_socket = Udp::new(stack, &buffers);
-    let mut bound_socket = unbound_socket
-        .bind(core::net::SocketAddr::V4(SocketAddrV4::new(
+    let buffers = UdpBuffers::<1, 1024, 1024, 10>::new();
+    let udp = Udp::new(stack, &buffers);
+    let mut socket = udp
+        .bind(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::UNSPECIFIED,
             DEFAULT_SERVER_PORT,
         )))
         .await
-        .expect("Failed to bind DHCP server");
+        .expect("Failed to bind the DHCP server");
 
     // ANCHOR: dhcp_server
+    // Advertise the device as the gateway and the DNS server of its network
+    let mut gateways = [Ipv4Addr::UNSPECIFIED];
+    let dns_servers = [gw_ip_addr];
+    let mut options = ServerOptions::new(gw_ip_addr, Some(&mut gateways));
+    options.dns = &dns_servers;
+    let mut server = Server::<_, 64>::new_with_et(gw_ip_addr);
+
     loop {
-        _ = io::server::run(
-            &mut Server::<_, 64>::new_with_et(gw_ip_addr),
-            &ServerOptions::new(gw_ip_addr, Some(&mut gw_buf)),
-            &mut bound_socket,
-            &mut buf,
-        )
-        .await
-        .inspect_err(|e| log::warn!("DHCP server error: {e:?}"));
-        Timer::after(EmbassyDuration::from_millis(500)).await;
+        if let Err(e) = io::server::run(&mut server, &options, &mut socket, &mut buf).await {
+            warn!("DHCP server error: {e:?}");
+        }
+        Timer::after_millis(500).await;
     }
     // ANCHOR_END: dhcp_server
 }
 
 #[embassy_executor::task]
 pub async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
-    use core::net::{SocketAddr, SocketAddrV4};
-
-    const DNS_PORT: u16 = 8853;
+    const DNS_PORT: u16 = 53;
 
     let mut tx_buf = [0u8; 1500];
     let mut rx_buf = [0u8; 1500];
 
-    info!("Starting Captive Portal DNS server on port {DNS_PORT}");
-    debug!("All DNS queries will resolve to {gw_ip_addr}");
-
-    let buffers = UdpBuffers::<3, 1024, 1024, 10>::new();
-    let udp_stack = Udp::new(stack, &buffers);
+    let buffers = UdpBuffers::<1, 1024, 1024, 10>::new();
+    let udp = Udp::new(stack, &buffers);
 
     // ANCHOR: captive_dns
+    // Answer every DNS query with the address of the device
     loop {
-        debug!("Starting Captive Portal DNS server");
-        _ = run(
-            &udp_stack,
+        if let Err(e) = edge_captive::io::run(
+            &udp,
             SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DNS_PORT)),
             &mut tx_buf,
             &mut rx_buf,
@@ -256,8 +195,10 @@ pub async fn run_captive_portal(stack: Stack<'static>, gw_ip_addr: Ipv4Addr) {
             Duration::from_secs(60),
         )
         .await
-        .inspect_err(|e| log::warn!("Captive Portal DNS server error: {e:?}"));
-        Timer::after(EmbassyDuration::from_millis(500)).await;
+        {
+            warn!("Captive portal DNS server error: {e:?}");
+        }
+        Timer::after_millis(500).await;
     }
     // ANCHOR_END: captive_dns
 }

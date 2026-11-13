@@ -2,7 +2,7 @@
 
 In this chapter we remove the compile-time Wi-Fi credentials. Instead, the board starts its own access point and serves a small web page where you enter the network name and password. Once the credentials arrive, the board leaves access point mode, joins the network, and publishes sensor data to the MQTT broker as before. The completed code for this chapter is available in `project/part4/`.
 
-The I2C setup, the heap, and the MQTT task from [Publishing Data to an MQTT Broker](./publishing-data.md) stay mostly the same. The MQTT task now also publishes humidity to `measurement/humidity`. The main changes are a second network stack, a set of small servers that run on the device, and a channel that hands the credentials from the web page to the Wi-Fi connection task.
+The I2C setup, the heap, and the MQTT task from [Publishing Data to an MQTT Broker](./publishing-data.md) stay mostly the same. The MQTT task now also publishes humidity to `measurement/humidity`. The main changes are a second network stack, a set of small servers that run on the device, and a signal that hands the credentials from the web page to the Wi-Fi connection task.
 
 ## What Is Wi-Fi Provisioning?
 
@@ -34,8 +34,8 @@ sequenceDiagram
 
     AP->>AP: Start access point "esp-radio"
     User->>AP: Join "esp-radio"
-    AP-->>User: DHCP lease (192.168.2.x)
-    User->>AP: GET http://192.168.2.1/
+    AP-->>User: DHCP lease (192.168.2.x, DNS server 192.168.2.1)
+    User->>AP: Captive portal check, or GET http://192.168.2.1/
     AP-->>User: Provisioning page
     User->>AP: POST /save (SSID and password)
     AP-->>User: "Configuration Saved!"
@@ -56,13 +56,7 @@ Provisioning needs both: AP mode to receive the credentials, then STA mode to us
 
 ### Two Interfaces, Two Network Stacks
 
-[`esp_radio::wifi::new`][wifi-new] already returned more than the station interface. In this chapter we use both the access point and the station [`Interfaces`][wifi-interfaces]:
-
-```rust,ignore
-{{#shiftinclude auto:../../project/part4/src/main.rs:wifi_interfaces}}
-```
-
-Each interface is a separate network device, so each one gets its own `embassy-net` stack:
+In addition to [`Interface::station()`][wifi-interface], `esp-radio` provides [`Interface::access_point()`][wifi-interface]. Each interface is a separate network device, so each one gets its own `embassy-net` stack. `create_network_stacks` creates both interfaces and their stacks:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part4/src/main.rs:network_stacks}}
@@ -80,7 +74,7 @@ The two stacks are configured differently:
 The gateway address defaults to `192.168.2.1` and can be overridden at compile time with `GATEWAY_IP`:
 
 ```rust,ignore
-{{#shiftinclude auto:../../project/part4/src/main.rs:gateway_ip}}
+{{#include ../../project/part4/src/main.rs:gateway_ip}}
 ```
 
 The access point stack also needs more sockets than the station stack, because it hosts servers for DHCP, DNS, and HTTP:
@@ -89,7 +83,7 @@ The access point stack also needs more sockets than the station stack, because i
 {{#shiftinclude auto:../../project/part4/src/network.rs:ap_stack}}
 ```
 
-The station stack keeps the `StackResources<3>` from the previous chapters. Both stacks still need `StaticCell`, for the same `'static` lifetime reasons described in [Wi-Fi Connectivity](./wifi-connectivity.md#why-the-stack-resources-are-static).
+The station stack keeps the `StackResources<3>` from the previous chapters. Both stacks still need `StaticCell`, for the same `'static` lifetime reasons described in [Wi-Fi Connectivity](./wifi-connectivity.md#why-the-stack-resources-are-static). Each stack also gets its own random seed, so the two stacks do not pick the same TCP sequence numbers or DHCP transaction IDs.
 
 ### Configuring the Controller
 
@@ -113,7 +107,7 @@ After the credentials arrive, the same task replaces the configuration with a [`
 
 ## Tasks and Why We Need Them
 
-The application now has seven concurrent activities. `main` initializes the hardware, creates the shared resources, and spawns most of the tasks:
+The application now has seven concurrent activities. `main` initializes the hardware, creates the network stacks, and spawns the tasks:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part4/src/main.rs:spawn_tasks}}
@@ -123,7 +117,7 @@ The application now has seven concurrent activities. `main` initializes the hard
 | -------------------- | ----- | --------------------------------------------------------------------------- |
 | `connection`         | —     | Owns the `WifiController`, starts the access point, then switches to station mode. |
 | `net_task`           | AP    | Polls the access point stack's `Runner`.                                    |
-| `sta_net_task`       | STA   | Polls the station stack's `Runner`.                                         |
+| `net_task`           | STA   | Polls the station stack's `Runner`.                                         |
 | `run_dhcp`           | AP    | Hands out IP addresses to clients that join the access point.               |
 | `run_captive_portal` | AP    | Answers DNS queries with the device's own address.                          |
 | `run_http_server`    | AP    | Serves the provisioning page and receives the credentials.                  |
@@ -136,10 +130,10 @@ Each of these is a loop that never finishes. Most of them spend their time waiti
 Every `embassy-net` stack needs its `Runner` to be polled continuously, so we need one runner task per stack:
 
 ```rust,ignore
-{{#include ../../project/part4/src/network.rs:runner_tasks}}
+{{#include ../../project/part4/src/network.rs:runner_task}}
 ```
 
-The two functions are identical. They exist separately because a function marked with [`#[embassy_executor::task]`][embassy-task] has a fixed-size, statically allocated task pool, and its default size is one. Spawning `net_task` a second time would fail. An alternative is `#[embassy_executor::task(pool_size = 2)]`, but two named tasks make it clearer which runner belongs to which stack.
+A function marked with [`#[embassy_executor::task]`][embassy-task] has a fixed-size, statically allocated task pool, and its default size is one: spawning `net_task` a second time would fail. `pool_size = 2` reserves room for two instances, one per stack.
 
 ### Servers on the Access Point
 
@@ -151,7 +145,7 @@ These crates are new dependencies in `Cargo.toml`:
 {{#include ../../project/part4/Cargo.toml:edge_net}}
 ```
 
-`run_dhcp` uses [`edge-dhcp`][edge-dhcp] to assign addresses to clients. Without it, the user would have to configure a static IP address by hand before reaching the page:
+`run_dhcp` uses [`edge-dhcp`][edge-dhcp] to assign addresses to clients. Without it, the user would have to configure a static IP address by hand before reaching the page. The lease also tells clients to use the device as their gateway and DNS server:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part4/src/http.rs:dhcp_server}}
@@ -169,37 +163,41 @@ These crates are new dependencies in `Cargo.toml`:
 {{#shiftinclude auto:../../project/part4/src/http.rs:http_server}}
 ```
 
-`main` spawns the HTTP server only after the access point stack is up and configured, and then logs the instructions for joining the portal:
+After spawning the tasks, `main` logs the instructions for joining the portal and returns:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part4/src/main.rs:portal_ready}}
 ```
 
-The `mqtt_task` is spawned immediately, but it does nothing useful yet. Its first step is `stack.wait_link_up()` on the station stack, so it waits until provisioning is complete and the station has joined the network.
+The `mqtt_task` is spawned immediately, but it does nothing useful yet. Its first step is `stack.wait_config_up()` on the station stack, so it waits until provisioning is complete and the station has joined the network.
 
 ### Captive Portals
 
-When a phone or laptop joins a new network, the operating system requests a well-known URL, such as `/generate_204` on Android or `/connecttest.txt` on Windows, to check for Internet access. Public hotspots use this check to open a sign-in page automatically. This is called a **captive portal**.
+When a phone or laptop joins a new network, the operating system requests a well-known URL, such as `http://connectivitycheck.gstatic.com/generate_204` on Android or `http://www.msftconnecttest.com/connecttest.txt` on Windows, to check for Internet access. Public hotspots use this check to open a sign-in page automatically. This is called a **captive portal**.
 
-The HTTP handler redirects those probe URLs to the provisioning page:
+Three pieces make the check reach the provisioning page:
+
+1. The DHCP lease names the device as the DNS server.
+2. The DNS server on port `53` answers every query, including the one for the probe host, with the address of the device.
+3. The HTTP handler redirects every unknown page to the provisioning page:
 
 ```rust,ignore
-{{#shiftinclude auto:../../project/part4/src/http.rs:captive_paths}}
+{{#shiftinclude auto:../../project/part4/src/http.rs:captive_redirect}}
 ```
 
-For the operating system to send its probe to the device, the client must use the device as its DNS server. In this project, the DNS responder listens on UDP port `8853`, while clients send DNS queries to the standard port `53`, and the DHCP server does not advertise a DNS server. As a result, the portal page does not open automatically: you open it yourself at `http://192.168.2.1/`.
+Whether and how the sign-in page opens depends on the operating system and its settings. For example, a client configured with its own DNS server, such as Android's Private DNS, never asks the device. You can always open the page yourself at `http://192.168.2.1/`.
 
 ### Passing Credentials Between Tasks
 
-The HTTP server receives the credentials, but the `connection` task owns the `WifiController`. The two tasks communicate through an [`embassy-sync` `Channel`][embassy-channel]:
+The HTTP server receives the credentials, but the `connection` task owns the `WifiController`. The two tasks communicate through an [`embassy-sync` `Signal`][embassy-signal]:
 
 ```rust,ignore
-{{#shiftinclude auto:../../project/part4/src/main.rs:credentials_channel}}
+{{#include ../../project/part4/src/network.rs:credentials_signal}}
 ```
 
-The channel has a capacity of one message, because we only need a single set of credentials. It uses a `CriticalSectionRawMutex`, which is safe to share between tasks and interrupts. Like the stack resources, it lives in a `StaticCell` so both tasks can hold a `&'static` reference.
+A `Signal` holds at most one value: sending replaces any value that has not been received yet, and never waits. That is all we need for a single set of credentials, and the HTTP handler can never block on it. It uses a `CriticalSectionRawMutex`, which is safe to share between tasks and interrupts. `Signal::new` is a `const fn`, so unlike the stack resources, the signal can be a plain `static` that both tasks use directly.
 
-The message type is a small struct:
+The value type is a small struct:
 
 ```rust,ignore
 {{#include ../../project/part4/src/network.rs:wifi_credentials}}
@@ -213,7 +211,7 @@ The `connection` task waits on the receiving end:
 {{#shiftinclude auto:../../project/part4/src/network.rs:receive_credentials}}
 ```
 
-`receive().await` suspends the task until a message arrives, without polling. The two-second delay gives the HTTP server time to finish sending the confirmation page before the access point shuts down.
+`wait().await` suspends the task until a value arrives, without polling. The two-second delay gives the browser time to receive the response and load the confirmation page before the access point shuts down.
 
 ## Serving the Provisioning Page
 
@@ -223,7 +221,7 @@ The HTTP handler matches on the request method and path. A `GET /` returns the p
 {{#shiftinclude auto:../../project/part4/src/http.rs:home_route}}
 ```
 
-`GET /saved` returns the confirmation page in the same way. Any other path returns `404 Not Found`.
+`GET /saved` returns the confirmation page in the same way. Other `GET` requests are redirected to the provisioning page, as described in [Captive Portals](#captive-portals), and any other request returns `404 Not Found`.
 
 The form submits the credentials as JSON to `POST /save`:
 
@@ -231,9 +229,9 @@ The form submits the credentials as JSON to `POST /save`:
 {{#shiftinclude auto:../../project/part4/src/http.rs:save_route}}
 ```
 
-The handler reads the body into a 256-byte buffer and parses it with [`serde-json-core`][serde-json-core], a `no_std` JSON parser that does not allocate. If parsing succeeds, the credentials are sent through the channel and the handler replies with the confirmation page. If the body is empty or not valid JSON, the handler replies with `400 Bad Request`.
+The handler reads up to 256 bytes of the body, which can arrive in several TCP segments, and parses it with [`serde-json-core`][serde-json-core], a `no_std` JSON parser that does not allocate. If parsing succeeds, the handler signals the credentials and replies with `200 OK`. If the body is empty, too long, or not valid JSON, the handler replies with `400 Bad Request`.
 
-> The handler logs the received password at the `debug` level. That is useful while learning, but a real product should never log secrets.
+The handler also rejects passwords shorter than eight characters, the minimum for WPA2. The Wi-Fi driver does not reject them: it accepts the configuration and only fails to connect, at which point the access point is already gone. Rejecting them here keeps the portal running and lets the page report the error. The form checks the same limits with the `minlength` and `maxlength` attributes, so the browser reports them before submitting.
 
 ## HTML Templates
 
@@ -254,7 +252,7 @@ Keep a few things in mind when editing them:
 
 - Despite the directory name, the pages are not processed by a template engine. They are served exactly as written.
 - Changes require a rebuild and reflash, because the HTML is part of the firmware image.
-- `home.html` displays `esp-radio` and `192.168.2.1` as plain text. If you change the access point SSID or `GATEWAY_IP`, update the page as well.
+- `home.html` displays `esp-radio` as plain text. If you change the access point SSID, update the page as well.
 - The form uses a small JavaScript `fetch` call to send JSON rather than the browser's default form encoding. This is what lets the firmware parse the body with `serde-json-core` into `WifiCredentials`. On success, the script navigates to `/saved`.
 - Every byte of HTML and CSS increases the size of the firmware. Inline styles and no external resources keep the pages self-contained, which matters because the client has no Internet access while connected to the access point.
 
@@ -277,29 +275,25 @@ Replace `your-ip` with the host IP printed by `cargo xtask mqtt-server`. `BROKER
 After boot, the serial monitor shows the portal instructions:
 
 ```text
-INFO - WiFi AP started!
-INFO - Starting Captive Portal DNS server on port 8853
-INFO - WiFi Provisioning Portal Ready
-INFO - 1. Connect to the AP: `esp-radio`
-INFO - 2. Navigate to: http://192.168.2.1/
-INFO - Starting HTTP server on port 80
+INFO - Provisioning portal: join the `esp-radio` network and open http://192.168.2.1/
+INFO - HTTP server listening on port 80
+INFO - Wi-Fi access point started
 ```
 
 Then provision the device:
 
 1. On a phone or computer, join the open Wi-Fi network `esp-radio`.
-2. Open `http://192.168.2.1/` in a browser. Use `http://`, not `https://`.
+2. If the sign-in page does not open by itself, open `http://192.168.2.1/` in a browser. Use `http://`, not `https://`.
 3. Enter the SSID and password of the network on which the MQTT broker is reachable, then select **Save Configuration**.
 4. Reconnect your phone or computer to its usual network. The `esp-radio` network disappears once the device switches to station mode.
 
 The serial monitor shows the switch to station mode, followed by the MQTT connection and the sensor readings:
 
 ```text
-INFO - Credentials received! SSID: your-ssid
-INFO - Connecting to WiFi network...
-INFO - Successfully connected to WiFi!
-INFO - connecting to MQTT broker at 192.168.1.10:1884...
-INFO - connected!
+INFO - Credentials received for SSID your-ssid
+INFO - Wi-Fi connected!
+INFO - Connecting to MQTT broker at 192.168.1.10:1884...
+INFO - Connected to MQTT broker
 INFO -   24.31 °C | 42.18 %RH
 ```
 
@@ -319,24 +313,24 @@ This example shows the core of Wi-Fi provisioning, but it leaves out several thi
 - **The credentials are not persisted.** They only live in RAM, so every reset starts the provisioning portal again. A real device would store them in flash and only start the portal when no valid credentials are stored.
 - **The access point is open.** Anyone nearby can join it and submit credentials, and the password travels in plain HTTP. Protecting the access point with a WPA2 password, or using a provisioning protocol with its own encryption, such as the security schemes in ESP-IDF's provisioning component, would address this.
 - **There is no feedback on failure.** The access point is gone by the time the device tries the credentials, so the user cannot see a connection failure on the page.
+- **One client at a time.** The HTTP server has a single connection handler, so a browser that keeps an idle connection open delays other requests until the connection times out.
 
 At this point the device no longer needs credentials at compile time: the same firmware can join any network. In the next chapter we will look at updating that firmware in the field with [Over-the-Air Updates](./ota-updates.md).
 
 [idf-provisioning]: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/provisioning/provisioning.html
-[wifi-new]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/fn.new.html
-[wifi-interfaces]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/struct.Interfaces.html
-[wifi-controller]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/struct.WifiController.html
-[wifi-config]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/enum.Config.html
-[set-config]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/struct.WifiController.html#method.set_config
-[ap-config]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/ap/struct.AccessPointConfig.html
-[sta-config]: https://docs.espressif.com/projects/rust/esp-radio/0.18.0/esp32c3/esp_radio/wifi/sta/struct.StationConfig.html
+[wifi-interface]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/wifi/struct.Interface.html
+[wifi-controller]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/wifi/struct.WifiController.html
+[wifi-config]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/wifi/enum.Config.html
+[set-config]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/wifi/struct.WifiController.html#method.set_config
+[ap-config]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/wifi/ap/struct.AccessPointConfig.html
+[sta-config]: https://docs.espressif.com/projects/rust/esp-radio/1.0.0-beta.1/esp32c3/esp_radio/wifi/sta/struct.StationConfig.html
 [embassy-task]: https://docs.rs/embassy-executor/0.10.0/embassy_executor/attr.task.html
-[embassy-channel]: https://docs.rs/embassy-sync/0.8.0/embassy_sync/channel/struct.Channel.html
+[embassy-signal]: https://docs.rs/embassy-sync/0.8.0/embassy_sync/signal/struct.Signal.html
 [edge-net]: https://github.com/sysgrok/edge-net
 [edge-nal-embassy]: https://docs.rs/edge-nal-embassy/0.9.0/edge_nal_embassy/
 [edge-dhcp]: https://docs.rs/edge-dhcp/0.8.0/edge_dhcp/
 [edge-captive]: https://docs.rs/edge-captive/0.8.0/edge_captive/
 [edge-http]: https://docs.rs/edge-http/0.8.0/edge_http/
 [heapless-string]: https://docs.rs/heapless/0.9.3/heapless/string/type.String.html
-[serde-json-core]: https://docs.rs/serde-json-core/0.6.0/serde_json_core/
+[serde-json-core]: https://docs.rs/serde-json-core/0.7.0/serde_json_core/
 [include-str]: https://doc.rust-lang.org/core/macro.include_str.html

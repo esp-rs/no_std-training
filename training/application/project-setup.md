@@ -11,10 +11,10 @@ cargo install --locked esp-generate
 With `esp-generate` installed, we can now generate an empty project:
 
 ```shell
-esp-generate --headless --chip=esp32c3 -o unstable-hal -o embassy no_std-training
+esp-generate --headless -o esp32c3 -o unstable-hal -o embassy no_std-training
 ```
 
-Since we are targeting the [ESP32-C3-DevKit-RUST-2] development kit, we select the ESP32-C3 for our chip. We will take advantage of asynchronous support via [Embassy], so both the `embassy` and `unstable` options are required.
+Since we are targeting the [ESP32-C3-DevKit-RUST-2] development kit, we select `esp32c3` as our chip. We will take advantage of asynchronous support via [Embassy], so both the `embassy` and `unstable-hal` options are required. Run `esp-generate list-options` to see every available option.
 
 You should now see `no_std-training/` in the executing directory.
 
@@ -29,14 +29,16 @@ Your newly generated project should look as follows:
 ```text
 no_std-training/
 ├─ .cargo/
-│  └─ config.toml
+│  ├─ config.toml
+│  └─ esp-config.toml
 ├─ .clippy.toml
+├─ .gitignore
 ├─ build.rs
 ├─ Cargo.toml
 ├─ rust-toolchain.toml
 └─ src/
    ├─ bin/
-   │   └─ main.rs
+   │  └─ main.rs
    └─ lib.rs
 ```
 
@@ -46,13 +48,16 @@ Let's quickly walk through the purpose of each of these files:
   - The [build target] is provided, in this case `riscv32imc-unknown-none-elf`.
   - Rust compiler flags are provided to force frame pointers. This is required in order for backtraces to work correctly. This is not required if not using the `esp-backtrace` crate.
   - Additionally, we configure [espflash] to be used as the Cargo runner for the project.
+  - It includes `.cargo/esp-config.toml`, which holds runtime settings such as the default log level.
 - [`.clippy.toml`] contains configuration for [Clippy], a linter for Rust code.
 - [`build.rs`] configures the Rust compiler to include the required linker scripts.
   - This could also be configured in `.cargo/config.toml`, but this approach provides better diagnostics in the case of build errors.
 - `Cargo.toml` is the [Cargo manifest], which contains project metadata, dependencies, and more.
 - [`rust-toolchain.toml`] specifies which Rust toolchain to use, in addition to specifying the required components and the build target.
-- `src/lib.rs` contains any library code for our application. This is currently empty, but will be populated in later chapters.
+- `src/lib.rs` contains any library code for our application. It is currently empty.
 - `src/bin/main.rs` is the entry point of our application. This is where most of our logic will live.
+
+> The completed code for each chapter, in `project/`, uses a slightly flatter layout: `src/main.rs` is the entry point, the application modules live next to it, and the `linkall.x` linker script is passed from `.cargo/config.toml` instead of `build.rs`.
 
 [`.cargo/config.toml`]: https://doc.rust-lang.org/cargo/reference/config.html
 [build target]: https://doc.rust-lang.org/beta/rustc/targets/index.html
@@ -77,9 +82,9 @@ The generated `Cargo.toml` comes pre-populated with a number of dependencies, wh
 
 Additional dependencies will be included in later chapters as well.
 
-[esp-hal]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/index.html
-[esp-rtos]: https://docs.espressif.com/projects/rust/esp-rtos/0.3.0/esp32c3/esp_rtos/index.html
-[esp-bootloader-esp-idf]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.5.0/esp32c3/esp_bootloader_esp_idf/index.html
+[esp-hal]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/index.html
+[esp-rtos]: https://docs.espressif.com/projects/rust/esp-rtos/0.4.0/esp32c3/esp_rtos/index.html
+[esp-bootloader-esp-idf]: https://docs.espressif.com/projects/rust/esp-bootloader-esp-idf/0.6.0/esp32c3/esp_bootloader_esp_idf/index.html
 [embassy-executor]: https://docs.rs/embassy-executor/latest/embassy_executor/
 [embassy-time]: https://docs.rs/embassy-time/latest/embassy_time/
 [critical-section]: https://docs.rs/critical-section/latest/critical_section/
@@ -119,14 +124,14 @@ esp_bootloader_esp_idf::esp_app_desc!();
 )]
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
+    // generator version: 2.0.0
+    // generator parameters: -o esp32c3 -o unstable-hal -o embassy
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let sw_interrupt =
-        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
     // TODO: Spawn some tasks
     let _ = spawner;
@@ -135,7 +140,7 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_secs(1)).await;
     }
 
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/main/examples
+    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.2.2/examples
 }
 ```
 
@@ -166,6 +171,6 @@ async fn main(spawner: Spawner) -> ! {
 }
 ```
 
-This macro creates a new instance of an Embassy `Executor` and spawns the `main` function as an asynchronous task.
+This macro creates a new instance of an Embassy `Executor` and spawns the `main` function as an asynchronous task. The executor keeps running after `main` returns, so `main` can also return once it has spawned the other tasks of the application.
 
-[main]: https://docs.espressif.com/projects/rust/esp-rtos/0.3.0/esp32c3/esp_rtos/attr.main.html
+[main]: https://docs.espressif.com/projects/rust/esp-rtos/0.4.0/esp32c3/esp_rtos/attr.main.html
