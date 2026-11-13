@@ -48,6 +48,8 @@ jobs:
           cargo build --locked --package xtask --bin ai-doc-review --release
           cp target/release/ai-doc-review /tmp/ai-doc-review
 
+      # The review tool is built from the base branch above and only reads these files, so the
+      # pull request code is never executed in this trusted context.
       - name: Checkout pull request content
         if: github.event_name == 'pull_request_target'
         uses: actions/checkout@v7
@@ -55,6 +57,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+          allow-unsafe-pr-checkout: true
 
       - name: Run documentation review (smoke test)
         if: github.event_name == 'pull_request'
