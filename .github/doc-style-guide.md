@@ -12,20 +12,24 @@ Use this guide when reviewing the mdBook content in `training/`.
 
 ## Formatting
 
-- Use Markdown code spans for code identifiers, crate names, commands, filenames, paths, environment variables, Rust attributes, and Rust types.
+- Use Markdown code spans for code identifiers, crate names, commands, filenames, paths, environment variables, Rust attributes, and Rust types. Acronyms such as BLE, DHCP, or MQTT are prose, not code.
 - Do not flag terms inside fenced code blocks, command examples, URLs, or generated output unless the surrounding prose is wrong.
 - Use sentence punctuation consistently around lists and link text.
-- Use heading-style capitalization for headings.
+- Use title case for headings, for example `Wi-Fi Provisioning` or `Publishing Data to an MQTT Broker`.
 
 ## Terminology
 
+Rules of the form "Use `X`, not `Y`" are checked automatically in prose. Code, URLs, link destinations, and mdBook directives may use the exact spelling of package names, commands, and paths.
+
 - Use `Wi-Fi`, not `wifi`, `WiFi`, or `Wi-fi`, in prose.
-- Use `` `no_std` `` for the Rust environment in prose. Repository names, URLs, and commands may use their exact spelling.
-- Use `ESP32-C3` for the chip name.
+- Use `` `no_std` `` for the Rust environment in prose.
+- Use `ESP32-C3`, not `esp32c3`, `ESP32C3`, or `esp32-c3`, for the chip name in prose.
 - Use `Espressif`, not `espressif`, in prose.
-- Use `ESP-IDF`, not `esp-idf`, in prose. Package names, links, commands, and paths may use exact lowercase spelling.
-- Use `MQTT` and `OTA` as acronyms in prose.
-- Use `SoC`, not `SOC`.
-- Use `eFuse`, not `efuse`.
+- Use `ESP-IDF`, not `esp-idf`, in prose.
+- Use `MQTT`, not `mqtt`, in prose.
+- Use `OTA`, not `ota`, in prose.
+- Use `SoC`, not `SOC`, in prose.
+- Use `eFuse`, not `efuse`, in prose.
 - Use `Wokwi`, not `wokwi`, in prose.
-- Capitalize `Cargo` and `Rust` in prose.
+- Use `Cargo`, not `cargo`, in prose.
+- Use `Rust`, not `rust`, in prose.
