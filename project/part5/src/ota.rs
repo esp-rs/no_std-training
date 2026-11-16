@@ -4,17 +4,16 @@ use edge_http::io::client::Connection;
 use edge_nal::WithTimeout;
 use edge_nal_embassy::{Tcp, TcpBuffers};
 use embassy_net::Stack;
-use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration as EmbassyDuration, Timer};
+use embassy_time::{Duration, Timer};
 use embedded_io_async::Read;
-use embedded_storage::Storage;
+use esp_bootloader_esp_idf::{ota::OtaImageState, ota_updater::OtaUpdater, partitions};
 use esp_storage::FlashStorage;
 use log::{debug, error, info};
 
 use crate::status_led::{LED_STATUS, LedStatus};
 
-const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
-const OTA_CHECK_INTERVAL_SECS: Option<&'static str> = option_env!("OTA_CHECK_INTERVAL_SECS");
+const HOST_IP: Option<&str> = option_env!("HOST_IP");
+const OTA_CHECK_INTERVAL_SECS: Option<&str> = option_env!("OTA_CHECK_INTERVAL_SECS");
 const OTA_PORT: u16 = 8080;
 
 // ANCHOR: image_layout
@@ -28,23 +27,18 @@ const VERSION_LEN: usize = 32;
 const IMAGE_PREFIX_LEN: usize = VERSION_OFFSET + VERSION_LEN;
 // ANCHOR_END: image_layout
 
-// ANCHOR: flash_storage_static
-pub static FLASH_STORAGE: Mutex<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    Option<FlashStorage<'static>>,
-> = Mutex::new(None);
-// ANCHOR_END: flash_storage_static
+const FLASH_SECTOR_SIZE: usize = FlashStorage::SECTOR_SIZE as usize;
 
 // ANCHOR: ota_interval
-fn ota_check_interval() -> EmbassyDuration {
+fn ota_check_interval() -> Duration {
     const DEFAULT_SECS: u64 = 300;
 
     let secs = OTA_CHECK_INTERVAL_SECS
         .and_then(|raw| raw.parse::<u64>().ok())
-        .filter(|secs: &u64| *secs > 0)
+        .filter(|&secs| secs > 0)
         .unwrap_or(DEFAULT_SECS);
 
-    EmbassyDuration::from_secs(secs)
+    Duration::from_secs(secs)
 }
 // ANCHOR_END: ota_interval
 
@@ -69,14 +63,11 @@ fn image_version(prefix: &[u8; IMAGE_PREFIX_LEN]) -> Option<&str> {
 ///
 /// Returns `Ok(true)` if a new image was installed, and `Ok(false)` if the server offers the
 /// version that is already running.
-async fn update_firmware(stack: Stack<'static>, host_ip: Ipv4Addr) -> Result<bool, ()> {
-    // Ensure network is ready
-    stack.wait_link_up().await;
-    stack.wait_config_up().await;
-
-    // Small delay before connecting
-    Timer::after(EmbassyDuration::from_millis(500)).await;
-
+async fn update_firmware(
+    stack: Stack<'static>,
+    host_ip: Ipv4Addr,
+    flash: &mut FlashStorage<'static>,
+) -> Result<bool, ()> {
     // ANCHOR: http_request
     let buffers = TcpBuffers::<1, 1024, 4096>::new();
     let tcp = WithTimeout::new(30_000, Tcp::new(stack, &buffers));
@@ -109,12 +100,14 @@ async fn update_firmware(stack: Stack<'static>, host_ip: Ipv4Addr) -> Result<boo
     // ANCHOR_END: check_response
 
     // ANCHOR: check_version
-    let mut prefix = [0u8; IMAGE_PREFIX_LEN];
-    body.read_exact(&mut prefix)
+    // Flash is erased and written in whole sectors, so the download is buffered one sector at a
+    // time. The first bytes contain the version of the image.
+    let mut sector = [0u8; FLASH_SECTOR_SIZE];
+    body.read_exact(&mut sector[..IMAGE_PREFIX_LEN])
         .await
         .map_err(|e| error!("HTTP Client: Read error: {e:?}"))?;
 
-    let Some(version) = image_version(&prefix) else {
+    let Some(version) = image_version(sector.first_chunk().unwrap()) else {
         error!("HTTP Client: Response is not an application image");
         return Err(());
     };
@@ -126,47 +119,42 @@ async fn update_firmware(stack: Stack<'static>, host_ip: Ipv4Addr) -> Result<boo
     info!("HTTP Client: Updating firmware {running_version} -> {version}");
     // ANCHOR_END: check_version
 
-    // Get flash storage from mutex
-    let mut flash_guard = FLASH_STORAGE.lock().await;
-    let flash = flash_guard.as_mut().ok_or_else(|| {
-        error!("HTTP Client: Flash storage not available");
-    })?;
-
     // ANCHOR: ota_updater
-    // Initialize OTA updater
-    let mut ota_buffer = [0u8; esp_bootloader_esp_idf::partitions::PARTITION_TABLE_MAX_LEN];
-    let mut ota = esp_bootloader_esp_idf::ota_updater::OtaUpdater::new(flash, &mut ota_buffer)
-        .map_err(|e| {
-            error!("HTTP Client: Failed to create OTA updater: {:?}", e);
-        })?;
+    let mut ota_buffer = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
+    let mut ota = OtaUpdater::new(flash, &mut ota_buffer)
+        .map_err(|e| error!("HTTP Client: Failed to create OTA updater: {e:?}"))?;
 
-    let (mut next_app_partition, part_type) = ota.next_partition().map_err(|e| {
-        error!("HTTP Client: Failed to get next partition: {:?}", e);
-    })?;
-
-    debug!("HTTP Client: Flashing image to {:?}", part_type);
+    let (mut partition, part_type) = ota
+        .next_partition()
+        .map_err(|e| error!("HTTP Client: Failed to get next partition: {e:?}"))?;
+    if content_len > partition.partition_size() as u64 {
+        error!("HTTP Client: Image ({content_len} bytes) does not fit in {part_type:?}");
+        return Err(());
+    }
+    debug!("HTTP Client: Flashing image to {part_type:?}");
     // ANCHOR_END: ota_updater
 
     // ANCHOR: write_firmware
-    // Write the bytes already read for the version check, then stream the rest
-    next_app_partition
-        .write(0, &prefix)
-        .map_err(|e| error!("HTTP Client: Failed to write chunk at offset 0: {e:?}"))?;
-
-    let mut written = IMAGE_PREFIX_LEN;
-    let mut chunk = [0u8; 4096];
+    let mut filled = IMAGE_PREFIX_LEN;
+    let mut written = 0;
     loop {
         let n = body
-            .read(&mut chunk)
+            .read(&mut sector[filled..])
             .await
             .map_err(|e| error!("HTTP Client: Read error: {e:?}"))?;
+        filled += n;
+
+        // Write each sector once it is full, and the remaining bytes at the end of the body
+        if filled == sector.len() || n == 0 {
+            partition
+                .write(written as u32, &sector[..filled])
+                .map_err(|e| error!("HTTP Client: Failed to write at offset {written}: {e:?}"))?;
+            written += filled;
+            filled = 0;
+        }
         if n == 0 {
             break;
         }
-        next_app_partition
-            .write(written as u32, &chunk[..n])
-            .map_err(|e| error!("HTTP Client: Failed to write chunk at offset {written}: {e:?}"))?;
-        written += n;
     }
 
     if written as u64 != content_len {
@@ -178,19 +166,13 @@ async fn update_firmware(stack: Stack<'static>, host_ip: Ipv4Addr) -> Result<boo
 
     // ANCHOR: activate_partition
     // Activate the next partition
-    ota.activate_next_partition().map_err(|e| {
-        error!("HTTP Client: Failed to activate partition: {:?}", e);
-    })?;
+    ota.activate_next_partition()
+        .map_err(|e| error!("HTTP Client: Failed to activate partition: {e:?}"))?;
     info!("HTTP Client: Partition activated successfully");
 
-    // Set OTA state to NEW
-    match ota.set_current_ota_state(esp_bootloader_esp_idf::ota::OtaImageState::New) {
-        Ok(()) => {
-            debug!("HTTP Client: OTA state set to NEW");
-        }
-        Err(e) => {
-            error!("HTTP Client: Failed to set OTA state: {:?}", e);
-        }
+    // Only relevant for bootloaders built with app rollback support
+    if let Err(e) = ota.set_current_ota_state(OtaImageState::New) {
+        error!("HTTP Client: Failed to set OTA state: {e:?}");
     }
     // ANCHOR_END: activate_partition
 
@@ -199,23 +181,13 @@ async fn update_firmware(stack: Stack<'static>, host_ip: Ipv4Addr) -> Result<boo
 }
 
 #[embassy_executor::task]
-pub async fn http_client_task(stack: Stack<'static>) {
-    debug!("HTTP Client: Task started!");
-    // Wait for WiFi connection
-    debug!("HTTP Client: Waiting for WiFi connection...");
-
-    // Wait for network to be configured (which means WiFi is connected)
-    stack.wait_config_up().await;
-    debug!("HTTP Client: Network configured, WiFi is connected");
-    LED_STATUS.signal(LedStatus::Idle);
-
-    // Wait for network to be fully ready
-    debug!("HTTP Client: Waiting for network to stabilize...");
-    Timer::after(EmbassyDuration::from_secs(2)).await;
-
-    if let Some(config) = stack.config_v4() {
-        debug!("HTTP Client: Got IP address: {}", config.address);
-    }
+pub async fn http_client_task(stack: Stack<'static>, mut flash: FlashStorage<'static>) {
+    // ANCHOR: ota_host
+    let Some(host_ip) = HOST_IP.and_then(|host| host.parse::<Ipv4Addr>().ok()) else {
+        error!("HTTP Client: HOST_IP is not set to an IPv4 address, OTA updates are disabled");
+        return;
+    };
+    // ANCHOR_END: ota_host
 
     let ota_interval = ota_check_interval();
     info!(
@@ -224,31 +196,19 @@ pub async fn http_client_task(stack: Stack<'static>) {
     );
 
     loop {
-        debug!("HTTP Client: Checking for firmware update...");
-
-        // Get host IP from environment variable
-        let Some(host_ip_str) = HOST_IP else {
-            debug!("HTTP Client: HOST_IP not set, skipping OTA update");
-            Timer::after(ota_interval).await;
-            continue;
-        };
-        let Ok(host_ip) = host_ip_str.parse::<Ipv4Addr>() else {
-            debug!("HTTP Client: Invalid HOST_IP format: {}", host_ip_str);
-            Timer::after(ota_interval).await;
-            continue;
-        };
+        // Wait until provisioning is complete and DHCP has configured the station
+        stack.wait_config_up().await;
 
         // ANCHOR: apply_update
-        // Attempt firmware update - reset if a new image was installed
         LED_STATUS.signal(LedStatus::Updating);
-
-        if update_firmware(stack, host_ip).await == Ok(true) {
+        debug!("HTTP Client: Checking for firmware update...");
+        if update_firmware(stack, host_ip, &mut flash).await == Ok(true) {
             info!("HTTP Client: Rebooting into updated firmware");
             esp_hal::system::software_reset();
         }
-
         LED_STATUS.signal(LedStatus::Idle);
-        Timer::after(ota_interval).await;
         // ANCHOR_END: apply_update
+
+        Timer::after(ota_interval).await;
     }
 }

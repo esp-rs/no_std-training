@@ -24,7 +24,7 @@ mod sensor;
 
 use embassy_executor::Spawner;
 use embassy_net::StackResources;
-use embassy_time::Duration;
+use embassy_time::{Duration, Timer};
 // ANCHOR: alloc_import
 use esp_alloc as _;
 // ANCHOR_END: alloc_import
@@ -36,8 +36,10 @@ use esp_hal::{
     rng::Rng,
     timer::timg::TimerGroup,
 };
-use log::debug;
+use esp_radio::wifi::{Interface, WifiController};
+use log::info;
 use shtcx2::asynchronous::shtc3;
+use static_cell::StaticCell;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/system/app_image_format.html#application-description>
@@ -59,24 +61,19 @@ async fn main(spawner: Spawner) -> ! {
     // ANCHOR_END: heap_init
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let sw_interrupt =
-        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
-    let sda = peripherals.GPIO10;
-    let scl = peripherals.GPIO8;
     let i2c = I2c::new(peripherals.I2C0, Config::default())
         .expect("Failed to create I2C bus")
-        .with_sda(sda)
-        .with_scl(scl)
+        .with_sda(peripherals.GPIO10)
+        .with_scl(peripherals.GPIO8)
         .into_async();
     let mut sht = shtc3(i2c);
 
     // ANCHOR: wifi_controller
-    let (controller, interfaces) = esp_radio::wifi::new(peripherals.WIFI, Default::default())
-        .expect("Failed to create WiFi controller");
-
-    let wifi_interface = interfaces.station;
+    let controller = WifiController::new(peripherals.WIFI, Default::default())
+        .expect("Failed to create Wi-Fi controller");
+    let wifi_interface = Interface::station();
     // ANCHOR_END: wifi_controller
 
     // ANCHOR: embassy_net_config
@@ -87,15 +84,11 @@ async fn main(spawner: Spawner) -> ! {
     // ANCHOR_END: embassy_net_config
 
     // ANCHOR: stack_init
-    // Init network stack
-    static STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
-        static_cell::StaticCell::new();
+    static STACK_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
     let (stack, runner) = embassy_net::new(
         wifi_interface,
         config,
-        STACK_RESOURCES_CELL
-            .uninit()
-            .write(StackResources::<3>::new()),
+        STACK_RESOURCES.init(StackResources::new()),
         seed,
     );
     // ANCHOR_END: stack_init
@@ -105,28 +98,19 @@ async fn main(spawner: Spawner) -> ! {
     // ANCHOR_END: spawn_tasks
 
     // ANCHOR: wait_ip
-    stack.wait_link_up().await;
-
-    debug!("Waiting to get IP address...");
-    loop {
-        if let Some(config) = stack.config_v4() {
-            debug!("Got IP: {}", config.address);
-            break;
-        }
-        embassy_time::Timer::after(Duration::from_millis(500)).await;
+    stack.wait_config_up().await;
+    if let Some(config) = stack.config_v4() {
+        info!("Got IP: {}", config.address);
     }
     // ANCHOR_END: wait_ip
 
     loop {
         // ANCHOR: main_loop
-        // Read sensor
-        if let Some((temp, humidity)) = read_sensor(&mut sht).await {
-            // Send sensor data via HTTP
-            let _ = send_sensor_data(stack, temp, humidity).await;
+        if let Some((temperature, humidity)) = read_sensor(&mut sht).await {
+            send_sensor_data(stack, temperature, humidity).await;
         }
         // ANCHOR_END: main_loop
 
-        // Small delay before next measurement
-        embassy_time::Timer::after(Duration::from_secs(1)).await;
+        Timer::after(Duration::from_secs(1)).await;
     }
 }

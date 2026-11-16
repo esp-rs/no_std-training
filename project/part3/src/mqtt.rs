@@ -1,8 +1,8 @@
 use core::fmt::Write;
 use core::num::NonZero;
-use embassy_net::{IpAddress, Ipv4Address, Stack, dns::DnsQueryType, tcp::TcpSocket};
+use embassy_net::{IpAddress, Stack, dns::DnsQueryType, tcp::TcpSocket};
 use embassy_time::{Duration, Timer};
-use log::{debug, error, info};
+use log::{error, info};
 use rust_mqtt::{
     Bytes,
     buffer::BumpBuffer,
@@ -14,15 +14,30 @@ use rust_mqtt::{
     types::{MqttString, TopicName},
 };
 
-use crate::sensor::read_sensor;
-use esp_hal::i2c::master::I2c;
-use shtcx2::asynchronous::AsyncShtC3 as ShtC3;
+use crate::sensor::{Sensor, read_sensor};
 
-const HOST_IP: Option<&'static str> = option_env!("HOST_IP");
-const BROKER_PORT: Option<&'static str> = option_env!("BROKER_PORT");
+// ANCHOR: broker_config
+const HOST_IP: Option<&str> = option_env!("HOST_IP");
+const BROKER_PORT: Option<&str> = option_env!("BROKER_PORT");
+// Default to the port of the local broker started with `cargo xtask mqtt-server`
+const DEFAULT_BROKER_PORT: u16 = 1884;
+// ANCHOR_END: broker_config
+
+const RETRY_DELAY: Duration = Duration::from_secs(5);
+const PUBLISH_INTERVAL: Duration = Duration::from_secs(1);
 
 #[embassy_executor::task]
-pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_hal::Async>>) {
+pub async fn mqtt_task(stack: Stack<'static>, mut sht: Sensor) {
+    // ANCHOR: broker_env
+    let Some(host) = HOST_IP.filter(|host| !host.is_empty()) else {
+        error!("No HOST_IP set. Provide e.g. HOST_IP=10.0.0.10 (or a hostname).");
+        return;
+    };
+    let port = BROKER_PORT
+        .and_then(|port| port.parse().ok())
+        .unwrap_or(DEFAULT_BROKER_PORT);
+    // ANCHOR_END: broker_env
+
     // ANCHOR: socket_buffers
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
@@ -30,64 +45,24 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
     loop {
         // ANCHOR: wait_network
-        // Wait for network to be ready before attempting connection
-        debug!("Waiting for WiFi link to come up...");
-        stack.wait_link_up().await;
-        debug!("WiFi link up, waiting for network configuration...");
-
-        // Wait for DHCP to assign an IP address
+        // Wait until Wi-Fi is connected and DHCP has assigned an address
         stack.wait_config_up().await;
-
-        debug!("Waiting to get IP address...");
-        loop {
-            if let Some(config) = stack.config_v4() {
-                debug!("Got IP: {}", config.address);
-                break;
-            }
-            Timer::after(Duration::from_millis(500)).await;
-        }
-
-        // Check if we still have a valid network config before proceeding
-        if !stack.is_config_up() {
-            debug!("Network config lost, retrying...");
-            continue;
-        }
         // ANCHOR_END: wait_network
 
-        Timer::after(Duration::from_millis(1_000)).await;
-
-        // ANCHOR: broker_config
-        let host = match HOST_IP {
-            Some(h) => h,
-            None => {
-                error!(
-                    "No HOST_IP set. Provide e.g. HOST_IP=10.0.0.10 (or hostname) and optional BROKER_PORT."
-                );
-                Timer::after(Duration::from_secs(5)).await;
-                continue;
-            }
-        };
-
-        // Default to rumqttd's v5 listener port (1884) unless overridden
-        let port: u16 = BROKER_PORT
-            .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(1884);
-        // ANCHOR_END: broker_config
-
         // ANCHOR: resolve_broker
-        // If host is an IPv4 literal, bypass DNS
-        let address = match host.parse::<Ipv4Address>() {
+        // If the host is an IPv4 literal, bypass DNS
+        let address = match host.parse() {
             Ok(ipv4) => IpAddress::Ipv4(ipv4),
-            Err(_) => match stack.dns_query(host, DnsQueryType::A).await {
-                Ok(addresses) if !addresses.is_empty() => addresses[0],
-                Ok(_) => {
-                    error!("DNS query returned no addresses for {}", host);
-                    Timer::after(Duration::from_secs(5)).await;
+            Err(_) => match stack.dns_query(host, DnsQueryType::A).await.as_deref() {
+                Ok([address, ..]) => *address,
+                Ok([]) => {
+                    error!("DNS query returned no addresses for {host}");
+                    Timer::after(RETRY_DELAY).await;
                     continue;
                 }
                 Err(e) => {
-                    error!("DNS lookup error: {e:?}");
-                    Timer::after(Duration::from_secs(5)).await;
+                    error!("DNS lookup for {host} failed: {e:?}");
+                    Timer::after(RETRY_DELAY).await;
                     continue;
                 }
             },
@@ -96,84 +71,72 @@ pub async fn mqtt_task(stack: Stack<'static>, mut sht: ShtC3<I2c<'static, esp_ha
 
         // ANCHOR: tcp_connect
         let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+        socket.set_timeout(Some(Duration::from_secs(10)));
 
-        let remote_endpoint = (address, port);
-        info!("connecting to MQTT broker at {}:{}...", host, port);
-        let connection = socket.connect(remote_endpoint).await;
-        if let Err(e) = connection {
-            error!("connect error: {:?}", e);
-            Timer::after(Duration::from_secs(5)).await;
+        info!("Connecting to MQTT broker at {host}:{port}...");
+        if let Err(e) = socket.connect((address, port)).await {
+            error!("TCP connect error: {e:?}");
+            Timer::after(RETRY_DELAY).await;
             continue;
         }
-        info!("connected!");
         // ANCHOR_END: tcp_connect
 
         // ANCHOR: mqtt_connect
         let mut mqtt_buffer_storage = [0; 1024];
         let mut mqtt_buffer = BumpBuffer::new(&mut mqtt_buffer_storage);
-        let mut client = Client::<_, _, 1, 1, 1, 1>::new(&mut mqtt_buffer);
+        let mut client = Client::<_, _, 1, 1, 1, 1, 0, 0, 0>::new(&mut mqtt_buffer);
         // rumqttd rejects the default keep alive of 0, which disables keep alive
         let connect_options = ConnectOptions::new()
             .clean_start()
-            .keep_alive(KeepAlive::Seconds(
-                NonZero::new(60).expect("non-zero keep alive"),
-            ));
-        let client_id = MqttString::from_str("esp32c3").expect("valid MQTT client id");
+            .keep_alive(KeepAlive::Seconds(NonZero::new(60).unwrap()));
+        let client_id = MqttString::from_str("esp32c3").unwrap();
 
         if let Err(e) = client
             .connect(socket, &connect_options, Some(client_id))
             .await
         {
-            error!("MQTT connect error: {:?}", e);
+            error!("MQTT connect error: {e:?}");
+            Timer::after(RETRY_DELAY).await;
             continue;
         }
+        info!("Connected to MQTT broker");
         // ANCHOR_END: mqtt_connect
 
         // ANCHOR: publication_options
-        let topic = TopicName::new(
-            MqttString::from_str("measurement/temperature").expect("valid MQTT topic string"),
-        )
-        .expect("valid MQTT topic name");
+        let topic =
+            TopicName::new(MqttString::from_str("measurement/temperature").unwrap()).unwrap();
         let publish_options = PublicationOptions::new(TopicReference::Name(topic)).retain();
         // ANCHOR_END: publication_options
 
-        // Main sensor reading and publishing loop
         loop {
             // ANCHOR: connection_check
-            // Check network state before attempting operations
-            if !stack.is_link_up() || !stack.is_config_up() {
-                debug!("Network connection lost, reconnecting...");
+            if !stack.is_config_up() {
+                info!("Network connection lost, reconnecting...");
                 break;
             }
             // ANCHOR_END: connection_check
 
             // ANCHOR: read_and_format
-            // Read sensor
-            let (temp, _) = match read_sensor(&mut sht).await {
-                Some(reading) => reading,
-                None => {
-                    Timer::after(Duration::from_secs(1)).await;
-                    continue;
-                }
+            let Some((temperature, _)) = read_sensor(&mut sht).await else {
+                Timer::after(PUBLISH_INTERVAL).await;
+                continue;
             };
 
-            let mut temperature_string: heapless::String<32> = heapless::String::new();
-            write!(temperature_string, "{:.2}", temp).expect("write! failed!");
+            let mut payload = heapless::String::<16>::new();
+            write!(payload, "{temperature:.2}").unwrap();
             // ANCHOR_END: read_and_format
 
             // ANCHOR: publish
             if let Err(e) = client
-                .publish(&publish_options, Bytes::from(temperature_string.as_bytes()))
+                .publish(&publish_options, Bytes::from(payload.as_bytes()))
                 .await
             {
-                error!("MQTT publish error: {:?}", e);
+                error!("MQTT publish error: {e:?}");
                 break;
             }
             // ANCHOR_END: publish
 
-            // Delay
-            Timer::after(Duration::from_secs(1)).await;
+            Timer::after(PUBLISH_INTERVAL).await;
         }
     }
 }

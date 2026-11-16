@@ -8,11 +8,6 @@ runner = "espflash flash --monitor --chip esp32c3"
 ESP_LOG = "info"
 # ANCHOR_END: log_env
 
-[net]
-retry              = 3     # network retries
-git-fetch-with-cli = true  # use the `git` executable for git operations
-offline            = false
-
 [build]
 rustflags = [
   # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)

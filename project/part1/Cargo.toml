@@ -1,22 +1,22 @@
 [package]
 edition      = "2024"
 name         = "no_std-training"
-rust-version = "1.88"
+rust-version = "1.95"
 version      = "0.1.0"
 
 [dependencies]
 embassy-executor = "0.10.0"
 embassy-time = "0.5.1"
-esp-backtrace = { version = "0.19.0", features = [
+esp-backtrace = { version = "0.20.0", features = [
   "esp32c3",
   "panic-handler",
   "println",
 ] }
-esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32c3"] }
-esp-hal = { version = "1.1.1", features = ["esp32c3", "unstable"] }
-esp-println = { version = "0.17.0", features = ["esp32c3", "log-04"] }
-esp-rtos = { version = "0.3.0", features = ["embassy", "esp32c3"] }
-log = "0.4.29"
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32c3", "log-04"] }
+esp-hal = { version = "1.2.2", features = ["esp32c3", "log-04", "unstable"] }
+esp-println = { version = "0.18.0", features = ["esp32c3", "log-04"] }
+esp-rtos = { version = "0.4.0", features = ["embassy", "esp32c3", "log-04"] }
+log = "0.4.35"
 shtcx2 = { version = "0.1.0", features = ["async"] }
 
 [profile.dev]

@@ -19,7 +19,7 @@ The final application is available in `project/part5/`.
 Along the way we covered:
 
 - How a `no_std`, `no_main` application is structured, and how `esp_hal::init` hands out peripherals as owned singletons. See [Project Setup](./project-setup.md) and [Reading Sensor Data](./reading-sensor-data.md).
-- How to use blocking and async drivers, using I2C and the SHTC3 sensor as an example. See [Reading Sensor Data](./reading-sensor-data.md).
+- How to use async drivers, using I2C and the SHTC3 sensor as an example. See [Reading Sensor Data](./reading-sensor-data.md).
 - How `esp-rtos` runs the Embassy executor, and how to split an application into tasks with `static` resources. See [Wi-Fi Connectivity](./wifi-connectivity.md#why-we-use-tasks).
 - When a heap is needed, how to provide one with `esp-alloc`, and when fixed-capacity `heapless` types avoid allocation altogether. See [Wi-Fi Connectivity](./wifi-connectivity.md#why-we-need-esp-alloc).
 - How to bring up Wi-Fi with `esp-radio` and an IP network with `embassy-net`. See [Wi-Fi Connectivity](./wifi-connectivity.md).

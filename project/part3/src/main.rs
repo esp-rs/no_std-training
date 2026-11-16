@@ -32,7 +32,9 @@ use esp_hal::{
     rng::Rng,
     timer::timg::TimerGroup,
 };
+use esp_radio::wifi::{Interface, WifiController};
 use shtcx2::asynchronous::shtc3;
+use static_cell::StaticCell;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/system/app_image_format.html#application-description>
@@ -42,7 +44,7 @@ use crate::mqtt::mqtt_task;
 use crate::network::{connection, net_task};
 
 #[esp_rtos::main]
-async fn main(spawner: Spawner) -> ! {
+async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -51,38 +53,29 @@ async fn main(spawner: Spawner) -> ! {
     esp_alloc::heap_allocator!(size: 36 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let sw_interrupt =
-        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
-    let sda = peripherals.GPIO10;
-    let scl = peripherals.GPIO8;
     let i2c = I2c::new(peripherals.I2C0, Config::default())
         .expect("Failed to create I2C bus")
-        .with_sda(sda)
-        .with_scl(scl)
+        .with_sda(peripherals.GPIO10)
+        .with_scl(peripherals.GPIO8)
         .into_async();
     let sht = shtc3(i2c);
 
-    let (controller, interfaces) = esp_radio::wifi::new(peripherals.WIFI, Default::default())
-        .expect("Failed to create WiFi controller");
-
-    let wifi_interface = interfaces.station;
+    let controller = WifiController::new(peripherals.WIFI, Default::default())
+        .expect("Failed to create Wi-Fi controller");
+    let wifi_interface = Interface::station();
 
     let config = embassy_net::Config::dhcpv4(Default::default());
 
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
-    // Init network stack
-    static STACK_RESOURCES_CELL: static_cell::StaticCell<StackResources<3>> =
-        static_cell::StaticCell::new();
+    static STACK_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
     let (stack, runner) = embassy_net::new(
         wifi_interface,
         config,
-        STACK_RESOURCES_CELL
-            .uninit()
-            .write(StackResources::<3>::new()),
+        STACK_RESOURCES.init(StackResources::new()),
         seed,
     );
     spawner.spawn(connection(controller).expect("failed to spawn connection task"));
@@ -90,11 +83,4 @@ async fn main(spawner: Spawner) -> ! {
     // ANCHOR: spawn_mqtt
     spawner.spawn(mqtt_task(stack, sht).expect("failed to spawn MQTT task"));
     // ANCHOR_END: spawn_mqtt
-
-    // ANCHOR: idle_main
-    // Keep main task alive
-    loop {
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(60)).await;
-    }
-    // ANCHOR_END: idle_main
 }

@@ -46,17 +46,27 @@ In the previous chapter, `main` owned the sensor and performed every read and HT
 
 `Stack` is a lightweight, copyable handle to the network stack, so it can be passed to the task while `net_task` continues to drive the stack's runner. The SHTC3 driver is moved into `mqtt_task`, giving that task exclusive ownership of the I2C sensor.
 
-After spawning the background tasks, `main` has no more application work to perform. It remains alive and yields to the executor:
-
-```rust,ignore
-{{#shiftinclude auto:../../project/part3/src/main.rs:idle_main}}
-```
-
-The network connection task, network runner, and MQTT task can now make progress independently whenever the other tasks are waiting.
+After spawning the background tasks, `main` has no more application work to perform, so it returns. The executor keeps running the spawned tasks: the network connection task, the network runner, and the MQTT task make progress independently whenever the other tasks are waiting.
 
 ## Initializing MQTT
 
-The MQTT task first reserves receive and transmit buffers for its TCP socket:
+### Locating the Broker
+
+The broker address and port are read at compile time:
+
+```rust,ignore
+{{#include ../../project/part3/src/mqtt.rs:broker_config}}
+```
+
+Both values are baked into the firmware when it is compiled. `HOST_IP` is required by the application logic, but it uses `option_env!` so a missing value produces a log error rather than a compiler error. `BROKER_PORT` is optional and defaults to `1884`, the port used by this training's local MQTT broker.
+
+The task reads them once, when it starts. Without `HOST_IP` there is nothing to connect to, so the task logs an error and ends:
+
+```rust,ignore
+{{#shiftinclude auto:../../project/part3/src/mqtt.rs:broker_env}}
+```
+
+Next, the task reserves receive and transmit buffers for its TCP socket:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part3/src/mqtt.rs:socket_buffers}}
@@ -66,25 +76,15 @@ These buffers live for the entire task and are reused for every connection attem
 
 ### Waiting for the Network
 
-MQTT runs over TCP, so the task cannot connect to the broker until Wi-Fi is associated and DHCP has configured the network stack:
+MQTT runs over TCP, so each connection attempt starts by waiting until Wi-Fi is associated and DHCP has configured the network stack:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part3/src/mqtt.rs:wait_network}}
 ```
 
-`wait_link_up()` waits for the Wi-Fi link. `wait_config_up()` waits for the network configuration, and `config_v4()` confirms that an IPv4 address is available. If the configuration disappears before the broker connection starts, the outer loop begins the sequence again.
+`wait_config_up()` returns immediately while the configuration is up. When the Wi-Fi link drops, `embassy-net` drops the DHCP lease as well, so the next attempt waits until the station has reconnected.
 
-### Locating the Broker
-
-The broker address and port are read at compile time:
-
-```rust,ignore
-{{#shiftinclude auto:../../project/part3/src/mqtt.rs:broker_config}}
-```
-
-Both values are baked into the firmware when it is compiled. `HOST_IP` is required by the application logic, but it uses `option_env!` so a missing value produces a log error rather than a compiler error. `BROKER_PORT` is optional and defaults to `1884`, the port used by this training's local MQTT broker.
-
-Despite its name, `HOST_IP` can also contain a hostname. The task first tries to parse the value as an IPv4 address. If parsing fails, it asks the network stack to resolve an IPv4 address with DNS:
+As in the previous chapter, `HOST_IP` can also contain a hostname. The task first tries to parse the value as an IPv4 address. If parsing fails, it asks the network stack to resolve an IPv4 address with DNS:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part3/src/mqtt.rs:resolve_broker}}
@@ -100,7 +100,7 @@ Next, the task opens a TCP socket to the resolved broker address:
 {{#shiftinclude auto:../../project/part3/src/mqtt.rs:tcp_connect}}
 ```
 
-The ten-second timeout prevents a connection attempt from waiting forever. A failed TCP connection pauses for five seconds and then returns to the beginning of the outer loop.
+The ten-second timeout prevents a connection attempt from waiting forever. A failed TCP connection pauses for five seconds and then returns to the beginning of the outer loop. A failed DNS lookup or MQTT connection does the same, so an unreachable broker is retried at a steady pace.
 
 Once TCP is connected, we can initialize the MQTT client:
 
@@ -108,7 +108,7 @@ Once TCP is connected, we can initialize the MQTT client:
 {{#shiftinclude auto:../../project/part3/src/mqtt.rs:mqtt_connect}}
 ```
 
-The 1 KiB `BumpBuffer` supplies working storage for MQTT packets. `clean_start()` asks the broker to begin without a previous MQTT session, and `esp32c3` identifies this client to the broker.
+The 1 KiB `BumpBuffer` supplies working storage for MQTT packets. The const generic parameters of `Client` size its session state: how many subscriptions, incoming and outgoing in-flight publications, subscription identifiers, user properties, and topic aliases it can track. We only publish with the default quality of service, so one of each and no user properties or topic aliases is enough. `clean_start()` asks the broker to begin without a previous MQTT session, and `esp32c3` identifies this client to the broker.
 
 `keep_alive(...)` promises the broker that the client sends a packet at least every 60 seconds. If the broker hears nothing for one and a half times that interval, it considers the client gone and closes the connection. Our publications every second keep the connection alive. The default, `KeepAlive::Infinite`, sends `0` and disables the mechanism, but the local broker rejects connections without a keep alive. `client.connect(...)` sends the MQTT `CONNECT` packet over the TCP socket and waits for the broker to accept it.
 
@@ -124,13 +124,13 @@ The topic is `measurement/temperature`. Calling `retain()` asks the broker to ke
 
 ## Publishing Measurements
 
-The inner loop is the steady-state part of the task. Before reading the sensor, it verifies that both the Wi-Fi link and network configuration are still available:
+The inner loop is the steady-state part of the task. Before reading the sensor, it verifies that the network configuration is still available:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part3/src/mqtt.rs:connection_check}}
 ```
 
-If either has been lost, `break` leaves the publication loop. The outer loop then waits for the network and creates fresh TCP and MQTT connections.
+If it has been lost, `break` leaves the publication loop. The outer loop then waits for the network and creates fresh TCP and MQTT connections.
 
 For each publication, the task reads the sensor and formats the temperature:
 
@@ -184,9 +184,9 @@ SSID="your-ssid" PASSWORD="your-password" HOST_IP="your-ip" BROKER_PORT="1885" c
 After Wi-Fi, TCP, and MQTT connect, the serial monitor should show sensor readings:
 
 ```text
-INFO - Wifi connected!
-INFO - connecting to MQTT broker at 192.168.1.10:1884...
-INFO - connected!
+INFO - Wi-Fi connected!
+INFO - Connecting to MQTT broker at 192.168.1.10:1884...
+INFO - Connected to MQTT broker
 INFO -   24.31 °C | 42.18 %RH
 ```
 
@@ -198,5 +198,5 @@ Topic: measurement/temperature | Payload: 24.31
 
 At this point the board can maintain an MQTT connection and publish sensor measurements to a broker. In the next chapter we will replace the compile-time Wi-Fi credentials with a provisioning portal.
 
-[`rust-mqtt`]: https://docs.rs/rust-mqtt/0.5.1/rust_mqtt/
+[`rust-mqtt`]: https://docs.rs/rust-mqtt/0.6.0/rust_mqtt/
 [`heapless::String`]: https://docs.rs/heapless/0.9.3/heapless/string/type.String.html

@@ -60,13 +60,13 @@ This enables `info` logs for this application while keeping other modules at `wa
 {{#shiftinclude auto:../../project/part1/src/main.rs:esp_hal_init}}
 ```
 
-[`esp_hal::init`][esp-hal-init] applies that configuration. It sets up the CPU clock and watchdog, then returns the peripherals and clocks needed by the HAL.
+[`esp_hal::init`][esp-hal-init] applies that configuration. It sets up the CPU clock and watchdog, then returns the peripherals.
 
 The important value for the next steps is `peripherals`. It contains one Rust value for each hardware block and pin. When we later create drivers, we pass those values into the driver constructors. That transfer of ownership is how `esp-hal` prevents accidental double-use of hardware: once `peripherals.I2C0` has been moved into the I2C driver below, no other driver can use the same I2C peripheral.
 
 ### `esp_rtos::start`
 
-The application uses async Rust through [Embassy]. [`esp_rtos::start`][esp-rtos-start] starts the scheduler used by `esp-rtos` and Embassy. It needs a hardware timer and a software interrupt:
+The application uses async Rust through [Embassy]. [`esp_rtos::start`][esp-rtos-start] starts the scheduler used by `esp-rtos` and Embassy. It needs a hardware timer and the `FROM_CPU_INTR0` software interrupt:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part1/src/main.rs:esp_rtos_start}}
@@ -100,31 +100,31 @@ Finally, `shtc3(i2c)` wraps the I2C bus in the sensor-specific driver from the [
 
 The SHTC3 is a temperature and humidity sensor controlled over I2C. The [SHTC3 datasheet][shtc3-datasheet] describes the command set, measurement modes, timing requirements, and conversion formulas. We do not need to implement those details manually; the `shtcx2` crate sends the commands and converts the raw values for us.
 
-The application still needs to follow the sensor's measurement sequence. A reading is not returned by a single I2C transaction; instead, we:
+A reading is not returned by a single I2C transaction. The sensor follows a measurement sequence:
 
 1. Ask the sensor to start a measurement.
 2. Wait until the measurement is complete.
 3. Read and convert the result.
 
-In code this looks like:
+The `measure` method of the driver performs these three steps for us:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part1/src/main.rs:read_measurement}}
 ```
 
-We use `PowerMode::NormalMode`, which is the higher-precision measurement mode. After `start_measurement(...)`, the SHTC3 is busy converting the temperature and humidity internally. If we try to read immediately, the sensor may not acknowledge the I2C read yet.
+We use `PowerMode::NormalMode`, which is the higher-precision measurement mode. After the measurement starts, the SHTC3 is busy converting the temperature and humidity internally. If we tried to read immediately, the sensor might not acknowledge the I2C read yet.
 
-There are a few ways a sensor can tell us that a measurement is ready. Some sensors expose a data-ready interrupt pin; the SHTC3 used on this board is a 4-pin I2C device (`VDD`, `SCL`, `SDA`, and `VSS`), so there is no interrupt pin for this example to await. The SHTC3 also supports clock stretching, but the measurement commands used by this driver do not enable it. We therefore wait for the maximum measurement duration reported by `max_measurement_duration(...)` before trying to read the result.
+There are a few ways a sensor can tell us that a measurement is ready. Some sensors expose a data-ready interrupt pin; the SHTC3 used on this board is a 4-pin I2C device (`VDD`, `SCL`, `SDA`, and `VSS`), so there is no interrupt pin for this example to await. The SHTC3 also supports clock stretching, but the measurement commands used by this driver do not enable it. `measure` therefore waits for the maximum measurement duration of the selected mode before it reads the result. It waits with the delay we pass in: [`embassy_time::Delay`][embassy-delay] implements the async `DelayNs` trait from `embedded-hal-async`.
 
-This wait is separate from the async I2C transfers. Async I2C lets the task yield while I2C commands are sent or received; `Timer::after(...).await` lets the task yield while the sensor performs the measurement. In both cases, the executor can run other work instead of busy-waiting.
+This wait is separate from the async I2C transfers. Async I2C lets the task yield while I2C commands are sent or received; the async delay lets the task yield while the sensor performs the measurement. In both cases, the executor can run other work instead of busy-waiting.
 
-The returned measurement exposes typed temperature and humidity values:
+The returned measurement exposes typed temperature and humidity values, which we log:
 
 ```rust,ignore
 {{#shiftinclude auto:../../project/part1/src/main.rs:log_measurement}}
 ```
 
-The loop repeats this sequence once per second, logging the latest reading.
+If the sensor does not respond, we log the error instead. Either way, the loop repeats the measurement once per second.
 
 ## Running the Application
 
@@ -159,13 +159,14 @@ At this point the application can initialize the board, configure an async I2C d
 [`log`]: https://docs.rs/log/latest/log/
 [env-logger]: https://docs.rs/env_logger/latest/env_logger/
 [`espflash`]: https://github.com/esp-rs/espflash/
-[esp-hal-init]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/fn.init.html
-[esp-hal-config]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/struct.Config.html
-[esp-hal-async]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/struct.Async.html
-[esp-rtos-start]: https://docs.espressif.com/projects/rust/esp-rtos/0.3.0/esp32c3/esp_rtos/fn.start.html
-[i2c-new]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/i2c/master/struct.I2c.html#method.new
-[i2c-with-sda]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/i2c/master/struct.I2c.html#method.with_sda
-[i2c-with-scl]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/i2c/master/struct.I2c.html#method.with_scl
-[i2c-into-async]: https://docs.espressif.com/projects/rust/esp-hal/1.1.1/esp32c3/esp_hal/i2c/master/struct.I2c.html#method.into_async
+[esp-hal-init]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/fn.init.html
+[esp-hal-config]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/struct.Config.html
+[esp-hal-async]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/struct.Async.html
+[esp-rtos-start]: https://docs.espressif.com/projects/rust/esp-rtos/0.4.0/esp32c3/esp_rtos/fn.start.html
+[i2c-new]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/i2c/master/struct.I2c.html#method.new
+[i2c-with-sda]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/i2c/master/struct.I2c.html#method.with_sda
+[i2c-with-scl]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/i2c/master/struct.I2c.html#method.with_scl
+[i2c-into-async]: https://docs.espressif.com/projects/rust/esp-hal/1.2.0/esp32c3/esp_hal/i2c/master/struct.I2c.html#method.into_async
 [`shtcx2`]: https://docs.rs/shtcx2/0.1.0/shtcx2/
+[embassy-delay]: https://docs.rs/embassy-time/0.5.1/embassy_time/struct.Delay.html
 [shtc3-datasheet]: https://sensirion.com/media/documents/643F9C8E/63A5A436/Datasheet_SHTC3.pdf
